@@ -135,7 +135,7 @@ docker image inspect "simplewatch-livekit:${RELEASE_TAG}" >/dev/null 2>&1 || "${
 
 if [[ "$clear_existing_data" == "true" ]]; then
   quarantine_id="pre-${RELEASE_TAG}-$(date -u +%Y%m%dT%H%M%SZ)"
-  "${compose[@]}" run --rm \
+  "${compose[@]}" run --rm --user 0:0 \
     -e CLEAR_LIBRARY_CONFIRM=clear-all-media-uploads-and-rooms \
     -e CLEAR_LIBRARY_ALLOWED_ROOT=/srv-data/quarantine \
     -e CLEAR_LIBRARY_QUARANTINE="/srv-data/quarantine/${quarantine_id}" \
