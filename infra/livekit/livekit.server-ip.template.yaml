@@ -6,6 +6,11 @@ rtc:
   use_external_ip: false
   node_ip: 8.134.239.34
   use_mdns: false
+  # eth0 is the internal app network; force ICE sockets onto the published
+  # RTC egress network so UDP checks do not leave with an unroutable source.
+  interfaces:
+    includes:
+      - eth1
 keys:
   __LIVEKIT_API_KEY__: __LIVEKIT_API_SECRET__
 webhook:

@@ -20,14 +20,19 @@ test("public server supports upload, room admission and two-party voice", async 
   const { csrfToken: adminCsrfToken } = (await (
     await loginResponsePromise
   ).json()) as { csrfToken: string };
-  await expect(page.getByRole("heading", { name: "放映控制" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "放映控制", exact: true }),
+  ).toBeVisible();
 
   const mediaName = `server-media-${Date.now()}.mp4`;
-  await page.locator('input[type="file"][accept="video/mp4"]').setInputFiles({
-    name: mediaName,
-    mimeType: "video/mp4",
-    buffer: readFileSync("test-data/generated/media-smoke.mp4"),
-  });
+  await page
+    .locator('input[type="file"][accept*="video/mp4"]')
+    .first()
+    .setInputFiles({
+      name: mediaName,
+      mimeType: "video/mp4",
+      buffer: readFileSync("test-data/generated/media-smoke.mp4"),
+    });
   await expect(page.getByText(/上传完成|正在检查兼容性/)).toBeVisible({
     timeout: 30_000,
   });
@@ -75,7 +80,7 @@ test("public server supports upload, room admission and two-party voice", async 
     expect(whipResult.codecs, JSON.stringify(whipResult.diagnostics)).toContain(
       "video/H264",
     );
-    memberContext = await browser.newContext({ ignoreHTTPSErrors: true });
+    memberContext = await browser.newContext({ ignoreHTTPSErrors: false });
     const member = await memberContext.newPage();
     await member.goto(inviteUrl!);
     await member.getByLabel("昵称").fill("Server Member");

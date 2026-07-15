@@ -1170,12 +1170,13 @@ rtc:
   use_external_ip: false
   tcp_port: 7881
   udp_port: 7882-7883
-  use_ice_lite: true
-  allow_tcp_fallback: true
+  interfaces:
+    includes:
+      - eth1
 prometheus_port: 6789
 ```
 
-不得同时设置大 UDP range。7880和6789仅内部。上线前用浏览器与 `rtcstats` 验证 candidate中不存在 Docker私网地址作为唯一候选，UDP、TCP回退均可用；失败则停止部署并形成网络 ADR，不能直接开放内部端口。
+不得同时设置大 UDP range。服务器 Compose 中 LiveKit 的 `eth0` 是无公网出口的 `sw_app`，`eth1` 是发布 7881/7882–7883 的 `sw_rtc_egress`；必须用 interface filter 固定 ICE 选源到 `eth1`。2026-07-15 的公网抓包曾证实未过滤时 UDP 探测从内部 `eth0` 地址发出并导致 ICE 失败。7880和6789仅内部。上线前用浏览器与 `rtcstats` 验证 candidate中不存在 Docker私网地址作为唯一候选，UDP、TCP回退均可用；失败则停止部署并形成网络 ADR，不能直接开放内部端口。
 
 正式 `turn_servers` 配置 `turn.simplec.top:443` 的 UDP与TLS两项、shared secret与 10 分钟 TTL。临时 IP阶段不配置 Coturn。
 
