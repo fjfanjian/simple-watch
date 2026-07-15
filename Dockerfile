@@ -2,6 +2,10 @@ ARG NODE_IMAGE=node:24.18.0-bookworm-slim
 FROM ${NODE_IMAGE} AS builder
 ARG APT_MIRROR=deb.debian.org
 
+# Official Node images start as root, but a locally cached fallback image may
+# have already switched to `node`. Build dependencies always require root.
+USER root
+
 ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH
 
@@ -18,6 +22,8 @@ RUN pnpm build:web
 
 FROM ${NODE_IMAGE}
 ARG APT_MIRROR=deb.debian.org
+
+USER root
 
 ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH \
