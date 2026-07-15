@@ -1,0 +1,15 @@
+.git
+.conda
+.cache
+.local
+.serena
+artifacts
+coverage
+node_modules
+playwright-report
+test-data/private
+test-results
+tmp
+*.secret
+*.age
+*.tsbuildinfo

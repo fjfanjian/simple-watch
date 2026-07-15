@@ -1,0 +1,9 @@
+.cache/
+.conda/
+.serena/
+artifacts/
+node_modules/
+tmp/
+IMPLEMENTATION_PLAN.md
+conda-win-64.lock
+apps/web/src/vendor/mediamtx-reader.js

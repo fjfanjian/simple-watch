@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "types": ["node"]
+  },
+  "include": [
+    "playwright.config.ts",
+    "playwright.rtc.config.ts",
+    "playwright.revocation.config.ts",
+    "playwright.fullstack.config.ts",
+    "playwright.server.config.ts",
+    "vitest.coverage.config.ts",
+    "tests/**/*.ts"
+  ]
+}

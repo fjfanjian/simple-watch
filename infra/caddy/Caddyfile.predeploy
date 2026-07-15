@@ -1,0 +1,61 @@
+{
+	auto_https off
+	admin off
+}
+
+http://127.0.0.1:18080 {
+	header {
+		-Server
+		Content-Security-Policy "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' ws: wss:; media-src 'self' blob:; worker-src 'self'"
+		Permissions-Policy "camera=(), microphone=(self), geolocation=(), payment=(), usb=()"
+		Referrer-Policy "no-referrer"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+	}
+	route {
+		@media path /media-files/*
+		@media_bad_method {
+			path /media-files/*
+			not method GET HEAD
+		}
+		@multiple_ranges {
+			path /media-files/*
+			header Range "*,*"
+		}
+
+		respond @media_bad_method 405
+		respond @multiple_ranges 416
+
+		handle /api/v1/internal/tus/hooks {
+			reverse_proxy 127.0.0.1:13900 {
+				header_up X-Internal-Token {$INTERNAL_HOOK_TOKEN}
+			}
+		}
+
+		handle /files/* {
+			forward_auth 127.0.0.1:13900 {
+				uri /api/v1/internal/tus/authorize
+				header_up X-Internal-Token {$INTERNAL_HOOK_TOKEN}
+				header_up X-Forwarded-Method {orig_method}
+				header_up X-Forwarded-Uri {orig_uri}
+			}
+			reverse_proxy 127.0.0.1:11080
+		}
+
+		handle @media {
+			forward_auth 127.0.0.1:13900 {
+				uri /api/v1/internal/media/authorize
+				header_up X-Internal-Token {$INTERNAL_HOOK_TOKEN}
+				header_up X-Forwarded-Method {orig_method}
+				header_up X-Forwarded-Uri {orig_uri}
+			}
+			uri strip_prefix /media-files
+			root * {$MEDIA_ROOT}
+			file_server
+		}
+
+		handle {
+			reverse_proxy 127.0.0.1:13900
+		}
+	}
+}

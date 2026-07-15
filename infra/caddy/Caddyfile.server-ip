@@ -1,0 +1,83 @@
+{
+	admin off
+	default_sni 8.134.239.34
+}
+
+http://:8080 {
+	@hook path /api/v1/internal/tus/hooks
+	@health path /health/live /health/ready
+	handle @hook {
+		reverse_proxy app:3000 {
+			header_up X-Internal-Token {$INTERNAL_HOOK_TOKEN}
+		}
+	}
+	handle @health {
+		reverse_proxy app:3000
+	}
+	respond 404
+}
+
+https://8.134.239.34 {
+	tls /etc/caddy/ip-cert/ip.crt /etc/caddy/ip-cert/ip.key
+	header {
+		-Server
+		Content-Security-Policy "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' ws: wss:; media-src 'self' blob:; worker-src 'self'"
+		Permissions-Policy "camera=(), microphone=(self), geolocation=(), payment=(), usb=()"
+		Referrer-Policy "no-referrer"
+		Strict-Transport-Security "max-age=86400"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+	}
+	route {
+		@media path /media-files/*
+		@media_bad_method {
+			path /media-files/*
+			not method GET HEAD
+		}
+		@multiple_ranges {
+			path /media-files/*
+			header Range "*,*"
+		}
+		respond @media_bad_method 405
+		respond @multiple_ranges 416
+
+		handle /api/v1/internal/tus/hooks {
+			reverse_proxy app:3000 {
+				header_up X-Internal-Token {$INTERNAL_HOOK_TOKEN}
+			}
+		}
+		handle /files/* {
+			forward_auth app:3000 {
+				uri /api/v1/internal/tus/authorize
+				header_up X-Internal-Token {$INTERNAL_HOOK_TOKEN}
+				header_up X-Forwarded-Method {orig_method}
+				header_up X-Forwarded-Uri {orig_uri}
+			}
+			reverse_proxy tusd:1080
+		}
+		handle /program/* {
+			uri strip_prefix /program
+			reverse_proxy mediamtx:8889
+		}
+		handle /rtc* {
+			reverse_proxy livekit:7880
+		}
+		handle /twirp/* {
+			reverse_proxy livekit:7880
+		}
+		handle @media {
+			forward_auth app:3000 {
+				uri /api/v1/internal/media/authorize
+				header_up X-Internal-Token {$INTERNAL_HOOK_TOKEN}
+				header_up X-Forwarded-Method {orig_method}
+				header_up X-Forwarded-Uri {orig_uri}
+			}
+			uri strip_prefix /media-files
+			root * /srv/simplewatch/media
+			file_server
+		}
+		handle {
+			reverse_proxy app:3000
+		}
+	}
+}

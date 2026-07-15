@@ -1,0 +1,3 @@
+put test-data/generated/media-smoke.mp4 server-sftp-smoke.mp4.part
+rename server-sftp-smoke.mp4.part server-sftp-smoke.mp4
+ls -l server-sftp-smoke.mp4

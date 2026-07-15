@@ -1,0 +1,27 @@
+test_id,gate,status,evidence,executed_at,notes
+TC-P1-001,P1,PASS,artifacts/predeploy/latest/verify-final.log,2026-07-14T18:45:00+08:00,Node24.18和pnpm10.33隔离环境
+TC-P1-002,P1,PASS,artifacts/predeploy/latest/verify-final.log,2026-07-14T18:45:00+08:00,pnpm verify退出0
+TC-P2-001,P2,PASS,artifacts/predeploy/latest/verify-final.log,2026-07-14T18:45:00+08:00,15个API集成测试
+TC-P2-002,P2,PASS,artifacts/predeploy/latest/verify-final.log,2026-07-14T18:45:00+08:00,状态机和WebSocket
+TC-P2-003,P2,PASS,docs/openapi.yaml,2026-07-14T18:45:00+08:00,OpenAPI与路由一致
+TC-P3-001,P3,PASS,.local/predeploy/tus-head.headers,2026-07-14T17:35:32+08:00,真实tusd两段续传
+TC-P3-002,P3,PASS,artifacts/predeploy/latest/verify-final.log,2026-07-14T18:45:00+08:00,真实FFmpeg样片和faststart
+TC-P3-003,P3,PASS,.local/predeploy/range.headers,2026-07-14T17:35:33+08:00,真实Caddy206和416
+TC-P3-004,P3,PASS,artifacts/predeploy/server-sftp-import.log,2026-07-14T23:07:06+08:00,服务器独立密钥chroot原子rename和0660权限以及跨挂载稳定扫描和崩溃租约恢复后published入库
+TC-P3-005,P3,PASS,artifacts/predeploy/latest/verify-final.log,2026-07-14T18:45:00+08:00,Worker稳定扫描仅导入两次属性一致的常规文件
+TC-P3-006,P3,PASS,artifacts/predeploy/latest/verify-final.log,2026-07-14T18:45:00+08:00,WebVTT边界不可覆盖与授权读取集成测试
+TC-P4-001,P4,PASS,artifacts/predeploy/latest/verify-final.log,2026-07-14T18:45:00+08:00,Compose静态解析和RTC原生栈健康
+TC-P4-002,P4,BLOCKED,artifacts/predeploy/server-post-sg-health.log,2026-07-14T23:38:00+08:00,服务器IP TLS容器硬化和安全组RTC端口实际UDP路径通过仍需可信证书监控与最终最小化防火墙规则
+TC-P5-001,P5,PASS,artifacts/predeploy/latest/verify-final.log,2026-07-14T18:45:00+08:00,5个Chrome仅麦克风轨并互见
+TC-P5-002,P5,BLOCKED,artifacts/predeploy/server-public-full-e2e-whip-h264.log,2026-07-14T23:38:00+08:00,公网双成员LiveKit语音实际走UDP7882和7883并通过仍需五台真机AEC延迟强制TCP与TURN和多网络重连
+TC-P5-003,P5,PASS,artifacts/predeploy/latest/rtc-revocation.json,2026-07-14T18:11:30+08:00,真实LiveKit签名webhook与RemoveParticipant、MediaMTX kick、旧token重连清退和15秒对账
+TC-P6-001,P6,PASS,artifacts/predeploy/latest/verify-final.log,2026-07-14T18:45:00+08:00,真实MediaMTX WHEP有效令牌通过伪造令牌401
+TC-P6-002,P6,BLOCKED,artifacts/predeploy/server-public-whip-h264-evidence.log,2026-07-14T23:38:00+08:00,公网Chrome自动化WHIP经UDP8189实际发布H264和Opus通过仍需Win与mac真实OBS立体声TCP回退及60分钟直播
+TC-P7-001,P7,PASS,artifacts/predeploy/server-public-full-e2e-whip-h264.log,2026-07-14T23:38:00+08:00,服务器公网真实Chrome登录上传字幕建房点播OBS配置H264与Opus WHIP双会话语音及只读权限通过
+TC-P7-002,P7,BLOCKED,,,需要三晚多网络和四路VOD容量门禁
+TC-P7-003,P7,PASS,artifacts/coverage/coverage-summary.json,2026-07-14T18:45:00+08:00,26个测试ID双向一致且后端行87.95%分支75.59%函数92.56%
+TC-P7-004,P7,PASS,tests/docs/SECURITY-COVERAGE.md,2026-07-14T18:45:00+08:00,OWASP自动化覆盖9/10且生产依赖无已知漏洞
+TC-P8-001,P8,BLOCKED,docs/operations/EXTERNAL-GATES.md,,需要ICP DNS证书与公网网络
+TC-P9-001,P9,PASS,artifacts/releases/local-release-manifest.json,2026-07-14T18:45:00+08:00,本地源码锁和迁移manifest
+TC-P9-002,P9,PASS,artifacts/predeploy/server-final-backup.json,2026-07-14T23:12:09+08:00,服务器最终SQLite Backup API备份独立打开integrity和foreign_key校验通过
+TC-P9-003,P9,BLOCKED,artifacts/predeploy/server-30min-observation.log,2026-07-14T23:40:45+08:00,服务器发布旧MES共存上一镜像回滚恢复及恢复镜像精确1800秒健康观察通过仍需正式GitSHA和最终版本24小时告警观察窗

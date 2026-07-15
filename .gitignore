@@ -1,0 +1,17 @@
+.conda/
+.cache/
+tmp/
+artifacts/
+test-data/generated/
+test-data/private/
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+.local/
+.serena/
+.env.local
+*.secret
+*.age
+*.tsbuildinfo

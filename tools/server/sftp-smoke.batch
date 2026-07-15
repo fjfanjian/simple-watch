@@ -1,0 +1,5 @@
+pwd
+put test-data/subtitles/predeploy.vtt sftp-smoke.vtt.part
+rename sftp-smoke.vtt.part sftp-smoke.vtt
+ls -l
+rm sftp-smoke.vtt

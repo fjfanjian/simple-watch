@@ -1,0 +1,1520 @@
+openapi: 3.0.3
+info:
+  title: SimpleWatch API
+  version: 0.1.0
+components:
+  schemas: {}
+paths:
+  /health/live:
+    get:
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - ok
+                required:
+                  - status
+                additionalProperties: false
+  /health/ready:
+    get:
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - ready
+                  database:
+                    type: string
+                    enum:
+                      - ok
+                required:
+                  - status
+                  - database
+                additionalProperties: false
+  /api/v1/admin/login:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                password:
+                  type: string
+                  minLength: 1
+                  maxLength: 1024
+              required:
+                - username
+                - password
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  admin:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                        pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                      username:
+                        type: string
+                    required:
+                      - id
+                      - username
+                    additionalProperties: false
+                  csrfToken:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+                required:
+                  - admin
+                  - csrfToken
+                  - expiresAt
+                additionalProperties: false
+  /api/v1/rooms/{roomId}:
+    patch:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rotatePassword:
+                  type: string
+                  minLength: 8
+                  maxLength: 1024
+                revokeMembers:
+                  default: false
+                  type: boolean
+                close:
+                  type: boolean
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: roomId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                    pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                  status:
+                    type: string
+                    enum:
+                      - active
+                      - closed
+                required:
+                  - id
+                  - status
+                additionalProperties: false
+  /api/v1/admin/logout:
+    post:
+      responses:
+        "204":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: string
+                nullable: true
+                enum:
+                  - null
+  /api/v1/rooms/{roomId}/host/handoff:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                targetMemberId:
+                  type: string
+                  format: uuid
+                  pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+              required:
+                - targetMemberId
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: roomId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  roomId:
+                    type: string
+                    format: uuid
+                    pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                  revision:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  status:
+                    type: string
+                    enum:
+                      - active
+                      - closed
+                  mode:
+                    type: string
+                    enum:
+                      - idle
+                      - vod
+                      - live
+                  media:
+                    nullable: true
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                        pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                      title:
+                        type: string
+                      durationSec:
+                        type: number
+                        minimum: 0
+                    required:
+                      - id
+                      - title
+                      - durationSec
+                    additionalProperties: false
+                  live:
+                    nullable: true
+                    type: object
+                    properties:
+                      state:
+                        type: string
+                        enum:
+                          - offline
+                          - connecting
+                          - online
+                    required:
+                      - state
+                    additionalProperties: false
+                  transport:
+                    nullable: true
+                    type: object
+                    properties:
+                      state:
+                        type: string
+                        enum:
+                          - playing
+                          - paused
+                      positionSec:
+                        type: number
+                        minimum: 0
+                      rate:
+                        type: number
+                        minimum: 0.5
+                        maximum: 2
+                      anchoredAtServerMs:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                    required:
+                      - state
+                      - positionSec
+                      - rate
+                      - anchoredAtServerMs
+                    additionalProperties: false
+                  hostMemberId:
+                    type: string
+                    format: uuid
+                    pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                  members:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                        nickname:
+                          type: string
+                          minLength: 1
+                          maxLength: 24
+                        role:
+                          type: string
+                          enum:
+                            - host
+                            - member
+                        online:
+                          type: boolean
+                      required:
+                        - id
+                        - nickname
+                        - role
+                        - online
+                      additionalProperties: false
+                  serverNowMs:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                required:
+                  - roomId
+                  - revision
+                  - status
+                  - mode
+                  - media
+                  - live
+                  - transport
+                  - hostMemberId
+                  - members
+                  - serverNowMs
+                additionalProperties: false
+  /api/v1/rooms/{roomId}/members/{memberId}/kick:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  maxLength: 200
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: roomId
+          required: true
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: memberId
+          required: true
+      responses:
+        "204":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: string
+                nullable: true
+                enum:
+                  - null
+  /api/v1/rooms:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password:
+                  type: string
+                  minLength: 8
+                  maxLength: 1024
+                hostNickname:
+                  type: string
+                  minLength: 1
+                  maxLength: 24
+                maxMembers:
+                  default: 5
+                  type: number
+                  enum:
+                    - 5
+              required:
+                - password
+                - hostNickname
+      responses:
+        "201":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  room:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                        pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                      joinUrl:
+                        type: string
+                        format: uri
+                    required:
+                      - id
+                    additionalProperties: false
+                  member:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                        pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                      nickname:
+                        type: string
+                      role:
+                        type: string
+                        enum:
+                          - host
+                          - member
+                    required:
+                      - id
+                      - nickname
+                      - role
+                    additionalProperties: false
+                  csrfToken:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+                required:
+                  - room
+                  - member
+                  - csrfToken
+                  - expiresAt
+                additionalProperties: false
+  /api/v1/rooms/{roomId}/join:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nickname:
+                  type: string
+                  minLength: 1
+                  maxLength: 24
+                password:
+                  type: string
+                  minLength: 1
+                  maxLength: 1024
+              required:
+                - nickname
+                - password
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: roomId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  room:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                        pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                      joinUrl:
+                        type: string
+                        format: uri
+                    required:
+                      - id
+                    additionalProperties: false
+                  member:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                        pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                      nickname:
+                        type: string
+                      role:
+                        type: string
+                        enum:
+                          - host
+                          - member
+                    required:
+                      - id
+                      - nickname
+                      - role
+                    additionalProperties: false
+                  csrfToken:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+                required:
+                  - room
+                  - member
+                  - csrfToken
+                  - expiresAt
+                additionalProperties: false
+  /api/v1/rooms/{roomId}/bootstrap:
+    get:
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: roomId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  snapshot:
+                    type: object
+                    properties:
+                      roomId:
+                        type: string
+                        format: uuid
+                        pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                      revision:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                      status:
+                        type: string
+                        enum:
+                          - active
+                          - closed
+                      mode:
+                        type: string
+                        enum:
+                          - idle
+                          - vod
+                          - live
+                      media:
+                        nullable: true
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                            format: uuid
+                            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                          title:
+                            type: string
+                          durationSec:
+                            type: number
+                            minimum: 0
+                        required:
+                          - id
+                          - title
+                          - durationSec
+                        additionalProperties: false
+                      live:
+                        nullable: true
+                        type: object
+                        properties:
+                          state:
+                            type: string
+                            enum:
+                              - offline
+                              - connecting
+                              - online
+                        required:
+                          - state
+                        additionalProperties: false
+                      transport:
+                        nullable: true
+                        type: object
+                        properties:
+                          state:
+                            type: string
+                            enum:
+                              - playing
+                              - paused
+                          positionSec:
+                            type: number
+                            minimum: 0
+                          rate:
+                            type: number
+                            minimum: 0.5
+                            maximum: 2
+                          anchoredAtServerMs:
+                            type: integer
+                            minimum: 0
+                            maximum: 9007199254740991
+                        required:
+                          - state
+                          - positionSec
+                          - rate
+                          - anchoredAtServerMs
+                        additionalProperties: false
+                      hostMemberId:
+                        type: string
+                        format: uuid
+                        pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                      members:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                              format: uuid
+                              pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                            nickname:
+                              type: string
+                              minLength: 1
+                              maxLength: 24
+                            role:
+                              type: string
+                              enum:
+                                - host
+                                - member
+                            online:
+                              type: boolean
+                          required:
+                            - id
+                            - nickname
+                            - role
+                            - online
+                          additionalProperties: false
+                      serverNowMs:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                    required:
+                      - roomId
+                      - revision
+                      - status
+                      - mode
+                      - media
+                      - live
+                      - transport
+                      - hostMemberId
+                      - members
+                      - serverNowMs
+                    additionalProperties: false
+                  memberId:
+                    type: string
+                    format: uuid
+                    pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                  csrfToken:
+                    type: string
+                  serverNow:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+                required:
+                  - snapshot
+                  - memberId
+                  - csrfToken
+                  - serverNow
+                additionalProperties: false
+  /api/v1/rooms/{roomId}/leave:
+    post:
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: roomId
+          required: true
+      responses:
+        "204":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: string
+                nullable: true
+                enum:
+                  - null
+  /api/v1/time:
+    get:
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  receivedAtMs:
+                    type: integer
+                    minimum: -9007199254740991
+                    maximum: 9007199254740991
+                  sentAtMs:
+                    type: integer
+                    minimum: -9007199254740991
+                    maximum: 9007199254740991
+                  origin:
+                    type: string
+                    format: uri
+                required:
+                  - receivedAtMs
+                  - sentAtMs
+                  - origin
+                additionalProperties: false
+  /api/v1/media:
+    get:
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      format: uuid
+                      pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                    displayName:
+                      type: string
+                    state:
+                      type: string
+                      enum:
+                        - scanning
+                        - compatible
+                        - incompatible
+                        - failed
+                        - published
+                    bytes:
+                      type: integer
+                      minimum: 0
+                      maximum: 9007199254740991
+                    mime:
+                      nullable: true
+                      type: string
+                    durationMs:
+                      nullable: true
+                      type: integer
+                      minimum: 0
+                      maximum: 9007199254740991
+                    createdAt:
+                      type: string
+                      format: date-time
+                      pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+                    subtitles:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                            format: uuid
+                            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                          language:
+                            type: string
+                          label:
+                            type: string
+                          format:
+                            type: string
+                            enum:
+                              - webvtt
+                        required:
+                          - id
+                          - language
+                          - label
+                          - format
+                        additionalProperties: false
+                  required:
+                    - id
+                    - displayName
+                    - state
+                    - bytes
+                    - mime
+                    - durationMs
+                    - createdAt
+                    - subtitles
+                  additionalProperties: false
+  /api/v1/media/{mediaId}:
+    get:
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: mediaId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                    pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                  displayName:
+                    type: string
+                  state:
+                    type: string
+                    enum:
+                      - scanning
+                      - compatible
+                      - incompatible
+                      - failed
+                      - published
+                  bytes:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  mime:
+                    nullable: true
+                    type: string
+                  durationMs:
+                    nullable: true
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  createdAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+                  subtitles:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                        language:
+                          type: string
+                        label:
+                          type: string
+                        format:
+                          type: string
+                          enum:
+                            - webvtt
+                      required:
+                        - id
+                        - language
+                        - label
+                        - format
+                      additionalProperties: false
+                required:
+                  - id
+                  - displayName
+                  - state
+                  - bytes
+                  - mime
+                  - durationMs
+                  - createdAt
+                  - subtitles
+                additionalProperties: false
+  /api/v1/media/{mediaId}/content:
+    get: &a1
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: mediaId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+    head: *a1
+  /api/v1/uploads/authorize:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                filename:
+                  type: string
+                  minLength: 1
+                  maxLength: 255
+                bytes:
+                  type: integer
+                  exclusiveMinimum: true
+                  maximum: 53687091200
+                mime:
+                  type: string
+                  enum:
+                    - video/mp4
+                    - application/mp4
+              required:
+                - filename
+                - bytes
+                - mime
+      responses:
+        "201":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploadId:
+                    type: string
+                    format: uuid
+                    pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                  tusEndpoint:
+                    type: string
+                    format: uri
+                  uploadToken:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+                  maxChunkBytes:
+                    type: integer
+                    exclusiveMinimum: true
+                    maximum: 9007199254740991
+                required:
+                  - uploadId
+                  - tusEndpoint
+                  - uploadToken
+                  - expiresAt
+                  - maxChunkBytes
+                additionalProperties: false
+  /api/v1/uploads/{uploadId}:
+    get:
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: uploadId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                    pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                  state:
+                    type: string
+                    enum:
+                      - authorized
+                      - uploading
+                      - received
+                      - scanning
+                      - compatible
+                      - incompatible
+                      - failed
+                      - published
+                      - cancelled
+                  filename:
+                    type: string
+                  mime:
+                    type: string
+                  declaredBytes:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  receivedBytes:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  expiresAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+                required:
+                  - id
+                  - state
+                  - filename
+                  - mime
+                  - declaredBytes
+                  - receivedBytes
+                  - expiresAt
+                additionalProperties: false
+    delete:
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: uploadId
+          required: true
+      responses:
+        "204":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: string
+                nullable: true
+                enum:
+                  - null
+  /api/v1/admin/media/{mediaId}/subtitles:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                language:
+                  type: string
+                  minLength: 2
+                  maxLength: 35
+                label:
+                  type: string
+                  minLength: 1
+                  maxLength: 80
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 2097152
+              required:
+                - language
+                - label
+                - content
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: mediaId
+          required: true
+      responses:
+        "202":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: string
+                    format: uuid
+                    pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                required:
+                  - jobId
+                additionalProperties: false
+  /api/v1/subtitles/{subtitleId}:
+    get:
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: subtitleId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+  /api/v1/internal/uploads/complete:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                uploadId:
+                  type: string
+                  format: uuid
+                  pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                uploadToken:
+                  type: string
+                  minLength: 1
+                filePath:
+                  type: string
+                  minLength: 1
+                receivedBytes:
+                  type: integer
+                  minimum: 0
+                  maximum: 9007199254740991
+              required:
+                - uploadId
+                - uploadToken
+                - filePath
+                - receivedBytes
+      responses:
+        "200":
+          description: Default Response
+  /api/v1/internal/tus/hooks:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: Default Response
+  /api/v1/internal/imports/sftp:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                filename:
+                  type: string
+                  minLength: 1
+                  maxLength: 255
+                filePath:
+                  type: string
+                  minLength: 1
+                bytes:
+                  type: integer
+                  exclusiveMinimum: true
+                  maximum: 9007199254740991
+              required:
+                - filename
+                - filePath
+                - bytes
+      responses:
+        "200":
+          description: Default Response
+  /api/v1/internal/jobs/claim:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                workerId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+              required:
+                - workerId
+      responses:
+        "200":
+          description: Default Response
+  /api/v1/internal/jobs/{jobId}/heartbeat:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                leaseToken:
+                  type: string
+                progress: {}
+              required:
+                - leaseToken
+                - progress
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: jobId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+  /api/v1/internal/jobs/{jobId}/result:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                compatible:
+                  type: boolean
+                probe:
+                  type: object
+                  additionalProperties: {}
+                reasons:
+                  type: array
+                  items:
+                    type: string
+                sha256:
+                  type: string
+                  pattern: ^[a-f0-9]{64}$
+                bytes:
+                  type: integer
+                  minimum: 0
+                  maximum: 9007199254740991
+                durationMs:
+                  nullable: true
+                  type: integer
+                  minimum: 0
+                  maximum: 9007199254740991
+                finalPath:
+                  type: string
+                  minLength: 1
+                leaseToken:
+                  type: string
+              required:
+                - compatible
+                - probe
+                - reasons
+                - sha256
+                - bytes
+                - durationMs
+                - finalPath
+                - leaseToken
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: jobId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+  /api/v1/internal/jobs/{jobId}/subtitle-result:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                leaseToken:
+                  type: string
+                finalPath:
+                  type: string
+                  minLength: 1
+                sha256:
+                  type: string
+                  pattern: ^[a-f0-9]{64}$
+                bytes:
+                  type: integer
+                  exclusiveMinimum: true
+                  maximum: 2097152
+              required:
+                - leaseToken
+                - finalPath
+                - sha256
+                - bytes
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: jobId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+  /api/v1/internal/media/authorize:
+    get:
+      responses:
+        "200":
+          description: Default Response
+  /api/v1/internal/tus/authorize:
+    get:
+      responses:
+        "200":
+          description: Default Response
+  /api/v1/rooms/{roomId}/credentials:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                purpose:
+                  type: string
+                  enum:
+                    - voice
+                    - whep
+              required:
+                - purpose
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: roomId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  purpose:
+                    type: string
+                    enum:
+                      - voice
+                      - whep
+                      - whip
+                  url:
+                    type: string
+                    format: uri
+                  token:
+                    type: string
+                    minLength: 1
+                  path:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+                required:
+                  - purpose
+                  - url
+                  - token
+                  - expiresAt
+                additionalProperties: false
+  /api/v1/internal/livekit/webhook:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: string
+      responses:
+        "204":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: string
+                nullable: true
+                enum:
+                  - null
+  /api/v1/rooms/{roomId}/live/publish-config:
+    post:
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: roomId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  purpose:
+                    type: string
+                    enum:
+                      - voice
+                      - whep
+                      - whip
+                  url:
+                    type: string
+                    format: uri
+                  token:
+                    type: string
+                    minLength: 1
+                  path:
+                    type: string
+                  expiresAt:
+                    type: string
+                    format: date-time
+                    pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z))$
+                required:
+                  - purpose
+                  - url
+                  - token
+                  - expiresAt
+                additionalProperties: false
+  /api/v1/internal/mediamtx/auth:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                action:
+                  type: string
+                  minLength: 1
+                path:
+                  type: string
+                id:
+                  type: string
+              required:
+                - action
+                - path
+              additionalProperties: {}
+      responses:
+        "204":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: string
+                nullable: true
+                enum:
+                  - null
+  /api/v1/internal/rtc/reconciliation-snapshot:
+    get:
+      responses:
+        "200":
+          description: Default Response
+  /api/v1/internal/outbox/claim:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                workerId:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+              required:
+                - workerId
+      responses:
+        "200":
+          description: Default Response
+  /api/v1/internal/outbox/{outboxId}/complete:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                leaseToken:
+                  type: string
+                  minLength: 1
+              required:
+                - leaseToken
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: outboxId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+  /api/v1/internal/outbox/{outboxId}/fail:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                leaseToken:
+                  type: string
+                  minLength: 1
+                error:
+                  type: string
+                  minLength: 1
+                  maxLength: 1000
+              required:
+                - leaseToken
+                - error
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          in: path
+          name: outboxId
+          required: true
+      responses:
+        "200":
+          description: Default Response
+servers:
+  - url: https://watch.simplec.top

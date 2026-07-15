@@ -1,0 +1,28 @@
+defect_id,severity,status,title,test_id,resolution
+DEF-001,P1,CLOSED,Fastify重复注册HEAD导致应用无法启动,TC-P3-003,GET和HEAD合并为同一路由注册
+DEF-002,P1,CLOSED,Caddy指令排序使多Range拒绝规则位于file_server之后,TC-P3-003,使用route固定拒绝规则顺序
+DEF-003,P2,CLOSED,Worker在API尚未启动时直接退出,TC-P3-002,连接失败改为有界重试
+DEF-004,P2,CLOSED,本机3000端口被既有DroneCloud占用,TC-P1-001,本地测试迁移到已检查的13900且不改动旧服务
+DEF-005,P2,CLOSED,PowerShell curl -X HEAD等待不存在的响应体,TC-P3-001,改用-I并设置超时
+DEF-006,P1,OPEN,Docker Desktop无法解析或连接镜像仓库,TC-P4-001,需修复Docker daemon DNS或在服务器解析精确digest
+DEF-007,P1,CLOSED,LiveKit仅声明Opus导致第四个Chrome订阅协商m-line冲突,TC-P5-001,保留VP8协商能力并继续用JWT禁止摄像头发布
+DEF-008,P2,CLOSED,空foreign_key_check输出在PowerShell中为null导致恢复脚本异常,TC-P9-002,将sqlite输出数组显式join为空字符串
+DEF-009,P3,CLOSED,MediaMTX鉴权成功用例误期望响应体状态200,TC-P5-003,按无响应体鉴权契约修正为204
+DEF-010,P3,CLOSED,HTTP原生栈测试未保存Secure会话Cookie导致建房401,TC-P5-003,从响应显式传递测试会话Cookie
+DEF-011,P3,CLOSED,RTC鉴权样例房间占用单活动房间配额导致撤销用例409,TC-P5-003,完成鉴权检查后显式关闭样例房间
+DEF-012,P1,CLOSED,LiveKit同秒签发令牌在踢人后仍可重连,TC-P5-003,确认自托管不实施revokeTokenTs并转由DEF-013对账修复
+DEF-013,P1,CLOSED,自托管LiveKit不支持令牌吊销导致旧token可重新入房,TC-P5-003,增加15秒权威成员对账并移除所有非活动参与者
+DEF-014,P2,CLOSED,新增RTC测试不满足严格Lint且配置未纳入根tsconfig,TC-P1-002,改用显式Promise mock并收录Playwright配置
+DEF-015,P3,CLOSED,新增Worker依赖后pnpm锁文件未通过Prettier门禁,TC-P1-002,使用项目Prettier规范化锁文件
+DEF-016,P2,CLOSED,Worker媒体测试依赖执行cwd导致根级覆盖率运行失败,TC-P7-003,基于import.meta.dirname解析仓库样片与临时目录
+DEF-017,P1,CLOSED,后端分支覆盖率64.57%低于75%门禁,TC-P7-003,补充认证授权媒体边界与安全负例后达到75.23%
+DEF-018,P2,CLOSED,不存在的导入路径触发ENOENT并返回500,TC-P7-004,统一转换为400 INVALID_FILE_PATH且不暴露内部异常
+DEF-019,P1,CLOSED,ws 8.18.3存在微小分片内存耗尽DoS高危漏洞,TC-P7-004,升级到已修复的ws 8.21.0并重跑生产依赖审计
+DEF-020,P2,CLOSED,音量output抢占滑块可访问名称导致辅助技术无法稳定定位,TC-P7-001,为滑块设置唯一aria-label并将纯展示output移出可访问树
+DEF-021,P1,CLOSED,Caddy访问IP时无SNI客户端收到TLS internal error,TC-P4-002,配置default_sni并使用带IP SAN的RSA测试证书
+DEF-022,P1,CLOSED,Worker跨独立bind mount使用rename触发EXDEV并重启,TC-P3-002,EXDEV时复制到目标临时文件后同盘原子rename并删除源文件
+DEF-023,P2,CLOSED,默认443仍写入Origin端口导致管理员登录被CSRF Origin拒绝,TC-P7-001,443生成无显式端口的规范化PUBLIC_ORIGIN
+DEF-024,P1,CLOSED,SFTP incoming与inbox独立挂载导致扫描器rename触发EXDEV,TC-P3-004,SFTP扫描器复用跨文件系统安全迁移函数
+DEF-025,P1,CLOSED,SFTP登记的probe源位于inbox却仅允许uploadRoot导致Worker重启,TC-P3-004,probe载荷保留sftp来源并按来源选择受限根目录
+DEF-026,P1,CLOSED,崩溃后过期的leased媒体任务不会重新领取,TC-P3-004,claim同时回收lease_until已过期的leased任务并轮换租约令牌
+DEF-027,P1,CLOSED,阿里云安全组未放行RTC端口导致公网LiveKit与WHIP失败,TC-P4-002,放行7881TCP和7882至7883UDP及8189TCP与UDP后以真实公网UDP双链路复测通过

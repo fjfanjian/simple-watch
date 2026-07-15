@@ -1,0 +1,32 @@
+logLevel: info
+logStructured: true
+
+authMethod: http
+authHTTPAddress: http://app:3000/api/v1/internal/mediamtx/auth
+authHTTPExclude:
+  - action: api
+  - action: metrics
+  - action: pprof
+
+api: true
+apiAddress: :9997
+metrics: true
+metricsAddress: :9998
+pprof: false
+
+rtsp: false
+rtmp: false
+hls: false
+srt: false
+
+webrtc: true
+webrtcAddress: :8889
+webrtcAllowOrigins: ["http://127.0.0.1:18080"]
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: :8189
+webrtcIPsFromInterfaces: false
+webrtcAdditionalHosts: ["127.0.0.1"]
+
+paths:
+  all_others:
+    source: publisher

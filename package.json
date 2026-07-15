@@ -1,0 +1,55 @@
+{
+  "name": "simplewatch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SimpleWatch private synchronized viewing system",
+  "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=24 <25",
+    "pnpm": ">=10 <11"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "argon2",
+      "better-sqlite3",
+      "esbuild"
+    ]
+  },
+  "scripts": {
+    "env:check": "node tools/environment/env-check.mjs",
+    "lint": "eslint . --max-warnings=0",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm --recursive typecheck",
+    "build:web": "pnpm --filter @simplewatch/web build",
+    "test:unit": "vitest run packages",
+    "test:ids": "node tools/testing/validate-test-ids.mjs",
+    "test:coverage": "pnpm test:media && vitest run --config vitest.coverage.config.ts --coverage",
+    "test:security": "vitest run tests/security && pnpm audit --prod --audit-level high",
+    "test:integration": "vitest run apps/api/test tests/integration --passWithNoTests",
+    "test:media": "pnpm --filter @simplewatch/media test:smoke",
+    "test:worker": "pnpm --filter @simplewatch/worker test",
+    "test:range": "pnpm test:media && pwsh -File tools/environment/install-caddy.ps1 && pwsh -File tools/environment/install-tusd.ps1 && pwsh -File tools/testing/range-predeploy.ps1",
+    "test:compose": "docker compose -f infra/compose/compose.local.yaml config --quiet",
+    "test:rtc": "pwsh -File tools/environment/install-mediamtx.ps1 && pwsh -File tools/environment/install-livekit.ps1 && pwsh -File tools/testing/rtc-native-smoke.ps1 && pwsh -File tools/testing/livekit-five-client.ps1",
+    "test:backup": "pwsh -File tools/testing/backup-restore-smoke.ps1",
+    "release:manifest": "pwsh -File tools/release/create-manifest.ps1",
+    "test:e2e": "playwright test",
+    "openapi:generate": "pnpm --filter @simplewatch/api openapi:generate",
+    "openapi:check": "pnpm --filter @simplewatch/api openapi:check",
+    "plan:lint": "node tools/plan-lint.mjs",
+    "verify": "pnpm env:check && pnpm plan:lint && pnpm test:ids && pnpm lint && pnpm format:check && pnpm typecheck && pnpm build:web && pnpm test:unit && pnpm test:integration && pnpm test:security && pnpm test:coverage && pnpm test:media && pnpm test:worker && pnpm test:range && pnpm test:compose && pnpm test:rtc && pnpm test:backup && pnpm release:manifest && pnpm openapi:check && pnpm test:e2e"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.1",
+    "@playwright/test": "1.61.1",
+    "@types/node": "24.10.1",
+    "@vitest/coverage-v8": "3.2.4",
+    "eslint": "9.39.1",
+    "globals": "16.5.0",
+    "livekit-server-sdk": "2.17.0",
+    "prettier": "3.7.4",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.48.1",
+    "vitest": "3.2.4"
+  }
+}

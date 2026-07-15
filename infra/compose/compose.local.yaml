@@ -1,0 +1,170 @@
+name: simplewatch-local
+
+services:
+  app:
+    build:
+      context: ../..
+    image: simplewatch-app:local-predeploy
+    command:
+      ["pnpm", "--filter", "@simplewatch/api", "exec", "tsx", "src/main.ts"]
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3000"
+      DATABASE_PATH: /state/simplewatch.sqlite3
+      PUBLIC_ORIGIN: http://127.0.0.1:18080
+      SESSION_SECRET: local-session-secret-change-before-prod
+      CONTENT_SIGNING_SECRET: local-content-signing-secret-prod
+      INTERNAL_HOOK_TOKEN: local-internal-hook-token-predeploy
+      MEDIA_JWT_SECRET: local-media-jwt-secret-change-before-prod
+      MEDIA_ORIGIN: http://127.0.0.1:18080
+      LIVEKIT_API_KEY: local-api-key
+      LIVEKIT_API_SECRET: local-livekit-secret-change-before-prod
+      LIVEKIT_URL: ws://127.0.0.1:17880
+      MEDIA_ROOT: /media
+      UPLOAD_ROOT: /uploads
+      INBOX_ROOT: /inbox
+      SUBTITLE_ROOT: /subtitles
+      SFTP_INCOMING_ROOT: /sftp-incoming
+      TUS_ENDPOINT: http://127.0.0.1:18080/files/
+    volumes:
+      - ../../.local/state:/state
+      - ../../.local/media:/media
+      - ../../.local/uploads:/uploads
+      - ../../.local/inbox:/inbox
+      - ../../.local/subtitles:/subtitles
+      - ../../.local/sftp-incoming:/sftp-incoming
+    networks: [sw_app]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health/ready').then(r=>{if(!r.ok)process.exit(1)})",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  worker:
+    image: simplewatch-app:local-predeploy
+    command:
+      ["pnpm", "--filter", "@simplewatch/worker", "exec", "tsx", "src/main.ts"]
+    environment:
+      API_ORIGIN: http://app:3000
+      INTERNAL_HOOK_TOKEN: local-internal-hook-token-predeploy
+      WORKER_ID: local-worker
+      MEDIA_ROOT: /media
+      UPLOAD_ROOT: /uploads
+      INBOX_ROOT: /inbox
+      SUBTITLE_ROOT: /subtitles
+      FFPROBE_PATH: /usr/bin/ffprobe
+      SFTP_INCOMING_ROOT: /sftp-incoming
+      LIVEKIT_INTERNAL_URL: http://livekit:7880
+      LIVEKIT_API_KEY: local-api-key
+      LIVEKIT_API_SECRET: local-livekit-secret-change-before-prod
+      MEDIAMTX_CONTROL_URL: http://mediamtx:9997
+    volumes:
+      - ../../.local/media:/media
+      - ../../.local/uploads:/uploads
+      - ../../.local/inbox:/inbox
+      - ../../.local/subtitles:/subtitles
+      - ../../.local/sftp-incoming:/sftp-incoming
+    networks: [sw_app]
+    depends_on:
+      app:
+        condition: service_healthy
+    profiles: [worker]
+
+  caddy:
+    image: caddy:2.11.4-alpine
+    environment:
+      INTERNAL_HOOK_TOKEN: local-internal-hook-token-predeploy
+    ports:
+      - 127.0.0.1:18080:8080
+    volumes:
+      - ../caddy/Caddyfile.local:/etc/caddy/Caddyfile:ro
+      - ../../.local/media:/srv/simplewatch/media:ro
+    networks: [sw_app]
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "-q",
+          "-O",
+          "/dev/null",
+          "http://127.0.0.1:8080/health/live",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  tusd:
+    image: tusproject/tusd:v2.9.2
+    command:
+      - -host=0.0.0.0
+      - -port=1080
+      - -base-path=/files/
+      - -behind-proxy
+      - -upload-dir=/uploads
+      - -hooks-http=http://caddy:8080/api/v1/internal/tus/hooks
+      - -hooks-http-forward-headers=Upload-Token
+      - -hooks-enabled-events=pre-create,post-create,post-receive,post-finish,post-terminate
+    volumes:
+      - ../../.local/uploads:/uploads
+    networks: [sw_app]
+    depends_on:
+      app:
+        condition: service_healthy
+
+  mediamtx:
+    image: bluenviron/mediamtx:1.18.2
+    ports:
+      - 127.0.0.1:18189:8189/tcp
+      - 127.0.0.1:18189:8189/udp
+    volumes:
+      - ../mediamtx/mediamtx.local.yml:/mediamtx.yml:ro
+    networks: [sw_app, sw_rtc_egress]
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "-q",
+          "-O",
+          "/dev/null",
+          "http://127.0.0.1:9997/v3/config/global/get",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  livekit:
+    image: livekit/livekit-server:v1.13.1
+    command: ["--config", "/etc/livekit.yaml"]
+    ports:
+      - 127.0.0.1:17880:7880/tcp
+      - 127.0.0.1:17881:7881/tcp
+      - 127.0.0.1:17882-17883:7882-7883/udp
+    volumes:
+      - ../livekit/livekit.local.yaml:/etc/livekit.yaml:ro
+    networks: [sw_app, sw_rtc_egress]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:7880/"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+networks:
+  sw_app:
+    internal: true
+  sw_rtc_egress: {}

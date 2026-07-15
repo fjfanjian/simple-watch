@@ -1,0 +1,20 @@
+{
+  "name": "@simplewatch/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --import tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm --filter @simplewatch/media test:smoke && vitest run test"
+  },
+  "dependencies": {
+    "@simplewatch/media": "workspace:*",
+    "livekit-server-sdk": "2.17.0",
+    "uuid": "14.0.1",
+    "zod": "4.1.13"
+  },
+  "devDependencies": {
+    "tsx": "4.21.0"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "name": "@simplewatch/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --import tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/main.js",
+    "admin:bootstrap": "node --import tsx src/cli/admin-bootstrap.ts",
+    "openapi:generate": "node --import tsx src/cli/generate-openapi.ts",
+    "openapi:check": "node --import tsx src/cli/generate-openapi.ts --check"
+  },
+  "dependencies": {
+    "@fastify/cookie": "11.1.1",
+    "@fastify/static": "10.1.0",
+    "@fastify/swagger": "9.8.1",
+    "@fastify/websocket": "11.3.0",
+    "@simplewatch/config": "workspace:*",
+    "@simplewatch/contracts": "workspace:*",
+    "@simplewatch/media": "workspace:*",
+    "@simplewatch/sync": "workspace:*",
+    "argon2": "0.44.0",
+    "better-sqlite3": "12.11.1",
+    "fastify": "5.10.0",
+    "fastify-type-provider-zod": "7.0.0",
+    "jose": "6.2.3",
+    "livekit-server-sdk": "2.17.0",
+    "uuid": "14.0.1",
+    "ws": "8.21.0",
+    "yaml": "2.9.0",
+    "zod": "4.1.13"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "7.6.13",
+    "@types/ws": "8.18.1",
+    "tsx": "4.21.0"
+  }
+}
