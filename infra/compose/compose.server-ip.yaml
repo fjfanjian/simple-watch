@@ -26,6 +26,7 @@ services:
       UPLOAD_ROOT: /uploads
       INBOX_ROOT: /inbox
       SUBTITLE_ROOT: /subtitles
+      TRASH_ROOT: /trash
       SFTP_INCOMING_ROOT: /sftp-incoming
     volumes:
       - /srv/simplewatch/state:/state
@@ -33,6 +34,7 @@ services:
       - /srv/simplewatch/uploads:/uploads
       - /srv/simplewatch/inbox:/inbox
       - /srv/simplewatch/subtitles:/subtitles
+      - /srv/simplewatch/trash:/trash
       - /srv/simplewatch/sftp/incoming:/sftp-incoming
     networks: [sw_app]
     healthcheck:

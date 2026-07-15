@@ -186,7 +186,7 @@ describe("SimpleWatch API", () => {
     expect(wrongPath.statusCode).toBe(403);
 
     const publish = await built.app.inject({
-      method: "POST",
+      method: "GET",
       url: `/api/v1/rooms/${room.roomId}/live/publish-config`,
       headers: authHeaders,
     });
@@ -715,7 +715,7 @@ describe("SimpleWatch API", () => {
     ).toThrowError("房间状态版本已变化");
   });
 
-  it("hands off host authority and immediately revokes a kicked member", async () => {
+  it("immediately revokes a member kicked by the host", async () => {
     const room = await createRoom();
     const hostBootstrap = await built.app.inject({
       method: "GET",
@@ -723,23 +723,23 @@ describe("SimpleWatch API", () => {
       headers: { cookie: room.roomCookie },
     });
     const hostCsrf = hostBootstrap.json<{ csrfToken: string }>().csrfToken;
-    const hostMemberId = hostBootstrap.json<{
-      snapshot: { hostMemberId: string };
-    }>().snapshot.hostMemberId;
-    const hostMediaCredential = await built.app.inject({
+    const joined = await joinRoom("Removed Member");
+    const joinedBody = joined.json<{
+      member: { id: string };
+      csrfToken: string;
+    }>();
+    const joinedCookie = readCookie(joined, "sw_room");
+    const mediaCredential = await built.app.inject({
       method: "POST",
       url: `/api/v1/rooms/${room.roomId}/credentials`,
       headers: {
-        cookie: room.roomCookie,
+        cookie: joinedCookie,
         origin,
-        "x-csrf-token": hostCsrf,
+        "x-csrf-token": joinedBody.csrfToken,
       },
       payload: { purpose: "whep" },
     });
-    const scopedMedia = hostMediaCredential.json<{
-      token: string;
-      path: string;
-    }>();
+    const scopedMedia = mediaCredential.json<{ token: string; path: string }>();
     const mediaConnected = await built.app.inject({
       method: "POST",
       url: "/api/v1/internal/mediamtx/auth",
@@ -747,49 +747,26 @@ describe("SimpleWatch API", () => {
         token: scopedMedia.token,
         action: "read",
         path: scopedMedia.path,
-        id: "host-media-session",
+        id: "member-media-session",
       },
     });
     expect(mediaConnected.statusCode).toBe(204);
-
-    const joined = await joinRoom("Next Host");
-    const joinedBody = joined.json<{
-      member: { id: string };
-      csrfToken: string;
-    }>();
-    const nextHostCookie = readCookie(joined, "sw_room");
-    const handoff = await built.app.inject({
+    const kicked = await built.app.inject({
       method: "POST",
-      url: `/api/v1/rooms/${room.roomId}/host/handoff`,
+      url: `/api/v1/rooms/${room.roomId}/members/${joinedBody.member.id}/kick`,
       headers: {
         cookie: room.roomCookie,
         origin,
         "x-csrf-token": hostCsrf,
       },
-      payload: { targetMemberId: joinedBody.member.id },
+      payload: { reason: "removed" },
     });
-    expect(handoff.statusCode).toBe(200);
-    expect(handoff.json()).toMatchObject({
-      hostMemberId: joinedBody.member.id,
-      revision: 1,
-    });
-
-    const kicked = await built.app.inject({
-      method: "POST",
-      url: `/api/v1/rooms/${room.roomId}/members/${hostMemberId}/kick`,
-      headers: {
-        cookie: nextHostCookie,
-        origin,
-        "x-csrf-token": joinedBody.csrfToken,
-      },
-      payload: { reason: "handoff complete" },
-    });
-    expect(kicked.statusCode).toBe(204);
+    expect(kicked.statusCode).toBe(200);
 
     const revoked = await built.app.inject({
       method: "GET",
       url: `/api/v1/rooms/${room.roomId}/bootstrap`,
-      headers: { cookie: room.roomCookie },
+      headers: { cookie: joinedCookie },
     });
     expect(revoked.statusCode).toBe(401);
     const mediaRevoked = await built.app.inject({
@@ -832,8 +809,8 @@ describe("SimpleWatch API", () => {
     );
     expect(mediaClaim?.payload).toEqual({
       roomId: room.roomId,
-      memberId: hostMemberId,
-      sessionIds: ["host-media-session"],
+      memberId: joinedBody.member.id,
+      sessionIds: ["member-media-session"],
     });
 
     const wrongLease = await built.app.inject({
@@ -1071,20 +1048,13 @@ describe("SimpleWatch API", () => {
     socket.close();
   });
 
-  it("expires a disconnected host lease and transfers authority", async () => {
+  it("does not transfer host authority when the host disconnects", async () => {
     const room = await createRoom();
-    const joined = await joinRoom("Oldest Member");
-    const nextMemberId = joined.json<{ member: { id: string } }>().member.id;
-    const hostIdentity = built.roomService.authenticate(
-      cookieValue(room.roomCookie),
-      room.roomId,
+    const joined = await joinRoom("Viewer");
+    const snapshot = built.roomService.getSnapshot(room.roomId);
+    expect(snapshot.hostMemberId).not.toBe(
+      joined.json<{ member: { id: string } }>().member.id,
     );
-
-    const snapshot = built.roomService.expireHostLease(hostIdentity, fixedNow);
-    expect(snapshot).toMatchObject({
-      hostMemberId: nextMemberId,
-      revision: 1,
-    });
   });
 
   it("uses one fixed unguessable friend link and rejects invalid invite tokens", async () => {

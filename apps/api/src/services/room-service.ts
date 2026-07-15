@@ -504,6 +504,9 @@ export class RoomService {
   }
 
   public leave(identity: RoomIdentity): void {
+    if (identity.role === "host") {
+      throw conflict("HOST_MUST_CLOSE", "主持人请返回控制台或关闭房间");
+    }
     const now = this.now();
     this.database.transaction(() => {
       this.database
@@ -514,47 +517,13 @@ export class RoomService {
           "UPDATE room_members SET left_at = ?, last_seen_at = ? WHERE member_id = ?",
         )
         .run(now, now, identity.memberId);
-      if (identity.role === "host") {
-        this.assignNextHost(identity.roomId, now, identity.memberId);
-      }
+      this.revokeRealtimeAccess(
+        identity.roomId,
+        identity.memberId,
+        "left",
+        now,
+      );
     })();
-  }
-
-  public handoffHost(
-    identity: RoomIdentity,
-    targetMemberId: string,
-  ): RoomSnapshot {
-    if (identity.role !== "host") throw forbidden("只有主持人可以转交主持权");
-    const now = this.now();
-    this.database.transaction(() => {
-      const target = this.database
-        .prepare(
-          `SELECT member_id, last_seen_at FROM room_members
-           WHERE member_id = ? AND room_id = ? AND left_at IS NULL AND kicked_at IS NULL`,
-        )
-        .get(targetMemberId, identity.roomId) as
-        | { readonly member_id: string; readonly last_seen_at: number }
-        | undefined;
-      if (!target) throw notFound("目标成员不存在");
-      if (now - target.last_seen_at > 30_000) {
-        throw conflict("MEMBER_OFFLINE", "只能将主持权转交给在线成员");
-      }
-
-      this.database
-        .prepare("UPDATE room_members SET role = 'member' WHERE room_id = ?")
-        .run(identity.roomId);
-      this.database
-        .prepare("UPDATE room_members SET role = 'host' WHERE member_id = ?")
-        .run(targetMemberId);
-      this.database
-        .prepare(
-          `UPDATE room_state
-           SET host_member_id = ?, revision = revision + 1, updated_at = ?
-           WHERE room_id = ?`,
-        )
-        .run(targetMemberId, now, identity.roomId);
-    })();
-    return this.getSnapshot(identity.roomId);
   }
 
   public kickMember(
@@ -584,71 +553,73 @@ export class RoomService {
           "UPDATE room_sessions SET revoked_at = ? WHERE member_id = ? AND revoked_at IS NULL",
         )
         .run(now, targetMemberId);
-      this.database
-        .prepare(
-          "UPDATE token_jti SET revoked_at = ? WHERE subject_id = ? AND revoked_at IS NULL",
-        )
-        .run(now, targetMemberId);
-      const revocationId = uuidv7();
-      const mediaSessionIds = this.database
-        .prepare(
-          `SELECT mediamtx_session_id FROM media_transport_sessions
-           WHERE member_id = ? AND closed_at IS NULL
-             AND mediamtx_session_id IS NOT NULL`,
-        )
-        .all(targetMemberId)
-        .map(
-          (row) =>
-            (row as { readonly mediamtx_session_id: string })
-              .mediamtx_session_id,
-        );
-      this.database
-        .prepare(
-          `INSERT INTO rtc_revocations(
-            id, room_id, member_id, identity, reason, revoked_at, cleared_at
-          ) VALUES (?, ?, ?, ?, ?, ?, NULL)`,
-        )
-        .run(
-          revocationId,
-          identity.roomId,
-          targetMemberId,
-          targetMemberId,
-          reason?.trim() || "kicked",
-          now,
-        );
-      this.database
-        .prepare(
-          `INSERT INTO service_outbox(
-            id, kind, dedupe_key, payload_json, state, attempts,
-            not_before, lease_until, last_error, created_at, completed_at
-          ) VALUES (?, 'mediamtx.kick-sessions', ?, ?, 'pending', 0, ?, NULL, NULL, ?, NULL)`,
-        )
-        .run(
-          uuidv7(),
-          `mediamtx-kick:${revocationId}`,
-          JSON.stringify({
-            roomId: identity.roomId,
-            memberId: targetMemberId,
-            sessionIds: mediaSessionIds,
-          }),
-          now,
-          now,
-        );
-      this.database
-        .prepare(
-          `INSERT INTO service_outbox(
-            id, kind, dedupe_key, payload_json, state, attempts,
-            not_before, lease_until, last_error, created_at, completed_at
-          ) VALUES (?, 'rtc.remove-participant', ?, ?, 'pending', 0, ?, NULL, NULL, ?, NULL)`,
-        )
-        .run(
-          uuidv7(),
-          `rtc-remove:${revocationId}`,
-          JSON.stringify({ roomId: identity.roomId, memberId: targetMemberId }),
-          now,
-          now,
-        );
+      this.revokeRealtimeAccess(
+        identity.roomId,
+        targetMemberId,
+        reason?.trim() || "kicked",
+        now,
+      );
     })();
+  }
+
+  private revokeRealtimeAccess(
+    roomId: string,
+    memberId: string,
+    reason: string,
+    now: number,
+  ): void {
+    this.database
+      .prepare(
+        "UPDATE token_jti SET revoked_at = ? WHERE subject_id = ? AND revoked_at IS NULL",
+      )
+      .run(now, memberId);
+    const revocationId = uuidv7();
+    const mediaSessionIds = this.database
+      .prepare(
+        `SELECT mediamtx_session_id FROM media_transport_sessions
+         WHERE member_id = ? AND closed_at IS NULL
+           AND mediamtx_session_id IS NOT NULL`,
+      )
+      .all(memberId)
+      .map(
+        (row) =>
+          (row as { readonly mediamtx_session_id: string }).mediamtx_session_id,
+      );
+    this.database
+      .prepare(
+        `INSERT INTO rtc_revocations(
+          id, room_id, member_id, identity, reason, revoked_at, cleared_at
+        ) VALUES (?, ?, ?, ?, ?, ?, NULL)`,
+      )
+      .run(revocationId, roomId, memberId, memberId, reason, now);
+    this.database
+      .prepare(
+        `INSERT INTO service_outbox(
+          id, kind, dedupe_key, payload_json, state, attempts,
+          not_before, lease_until, last_error, created_at, completed_at
+        ) VALUES (?, 'mediamtx.kick-sessions', ?, ?, 'pending', 0, ?, NULL, NULL, ?, NULL)`,
+      )
+      .run(
+        uuidv7(),
+        `mediamtx-kick:${revocationId}`,
+        JSON.stringify({ roomId, memberId, sessionIds: mediaSessionIds }),
+        now,
+        now,
+      );
+    this.database
+      .prepare(
+        `INSERT INTO service_outbox(
+          id, kind, dedupe_key, payload_json, state, attempts,
+          not_before, lease_until, last_error, created_at, completed_at
+        ) VALUES (?, 'rtc.remove-participant', ?, ?, 'pending', 0, ?, NULL, NULL, ?, NULL)`,
+      )
+      .run(
+        uuidv7(),
+        `rtc-remove:${revocationId}`,
+        JSON.stringify({ roomId, memberId }),
+        now,
+        now,
+      );
   }
 
   public updateRoom(
@@ -678,16 +649,37 @@ export class RoomService {
     };
   }
 
+  public closeByHost(identity: RoomIdentity): {
+    readonly id: string;
+    readonly status: "closed";
+  } {
+    if (identity.role !== "host") throw forbidden("只有主持人可以关闭房间");
+    return this.closeRoomInternal(identity.roomId) as {
+      readonly id: string;
+      readonly status: "closed";
+    };
+  }
+
   private closeRoom(
     adminId: string,
     roomId: string,
   ): { readonly id: string; readonly status: "active" | "closed" } {
-    const now = this.now();
+    const room = this.database
+      .prepare("SELECT id FROM rooms WHERE id = ? AND created_by = ?")
+      .get(roomId, adminId);
+    if (!room) throw notFound("房间不存在");
+    return this.closeRoomInternal(roomId);
+  }
 
+  private closeRoomInternal(roomId: string): {
+    readonly id: string;
+    readonly status: "active" | "closed";
+  } {
+    const now = this.now();
     this.database.transaction(() => {
       const room = this.database
-        .prepare("SELECT id, status FROM rooms WHERE id = ? AND created_by = ?")
-        .get(roomId, adminId) as
+        .prepare("SELECT id, status FROM rooms WHERE id = ?")
+        .get(roomId) as
         | { readonly id: string; readonly status: "active" | "closed" }
         | undefined;
       if (!room) throw notFound("房间不存在");
@@ -801,35 +793,6 @@ export class RoomService {
     return updated;
   }
 
-  public expireHostLease(
-    identity: RoomIdentity,
-    disconnectedAt: number,
-  ): RoomSnapshot | null {
-    let changed = false;
-    this.database.transaction(() => {
-      const member = this.database
-        .prepare(
-          `SELECT role, last_seen_at FROM room_members
-           WHERE member_id = ? AND room_id = ? AND left_at IS NULL AND kicked_at IS NULL`,
-        )
-        .get(identity.memberId, identity.roomId) as
-        | { readonly role: "host" | "member"; readonly last_seen_at: number }
-        | undefined;
-      if (
-        !member ||
-        member.role !== "host" ||
-        member.last_seen_at > disconnectedAt
-      )
-        return;
-      changed = this.assignNextHost(
-        identity.roomId,
-        this.now(),
-        identity.memberId,
-      );
-    })();
-    return changed ? this.getSnapshot(identity.roomId) : null;
-  }
-
   public touch(identity: RoomIdentity): void {
     this.database
       .prepare("UPDATE room_members SET last_seen_at = ? WHERE member_id = ?")
@@ -868,40 +831,6 @@ export class RoomService {
         expiresAt,
         createdAt,
       );
-  }
-
-  private assignNextHost(
-    roomId: string,
-    timestamp: number,
-    excludedMemberId: string,
-  ): boolean {
-    const next = this.database
-      .prepare(
-        `SELECT member_id FROM room_members
-         WHERE room_id = ?
-           AND member_id <> ?
-           AND left_at IS NULL
-           AND kicked_at IS NULL
-           AND last_seen_at >= ?
-         ORDER BY joined_at ASC LIMIT 1`,
-      )
-      .get(roomId, excludedMemberId, timestamp - 30_000) as
-      | { readonly member_id: string }
-      | undefined;
-    if (!next) return false;
-
-    this.database
-      .prepare("UPDATE room_members SET role = 'member' WHERE room_id = ?")
-      .run(roomId);
-    this.database
-      .prepare("UPDATE room_members SET role = 'host' WHERE member_id = ?")
-      .run(next.member_id);
-    this.database
-      .prepare(
-        "UPDATE room_state SET host_member_id = ?, revision = revision + 1, updated_at = ? WHERE room_id = ?",
-      )
-      .run(next.member_id, timestamp, roomId);
-    return true;
   }
 }
 
@@ -975,7 +904,42 @@ function applyRoomCommand(
     };
   }
   if (command.kind === "select-live") {
-    return { mode: "live", mediaId: null, transport: null };
+    const previous = parseTransport(state.transport_json);
+    return {
+      mode: "live",
+      mediaId: state.media_id,
+      transport: previous
+        ? {
+            ...previous,
+            state: "paused",
+            positionSec: projectPosition(previous, effectiveAt),
+            anchoredAtServerMs: effectiveAt,
+          }
+        : null,
+    };
+  }
+  if (command.kind === "restore-vod") {
+    if (!state.media_id)
+      throw conflict("NO_PREVIOUS_VOD", "没有可恢复的服务器影片");
+    const media = database
+      .prepare(
+        "SELECT id FROM media WHERE id = ? AND state IN ('compatible', 'published') AND trashed_at IS NULL",
+      )
+      .get(state.media_id);
+    if (!media) throw notFound("上一条影片已不可用");
+    const previous = parseTransport(state.transport_json);
+    return {
+      mode: "vod",
+      mediaId: state.media_id,
+      transport: previous
+        ? { ...previous, state: "paused", anchoredAtServerMs: effectiveAt }
+        : {
+            state: "paused",
+            positionSec: 0,
+            rate: 1,
+            anchoredAtServerMs: effectiveAt,
+          },
+    };
   }
   if (state.mode !== "vod") {
     throw conflict("INVALID_ROOM_MODE", "当前不是点播模式");

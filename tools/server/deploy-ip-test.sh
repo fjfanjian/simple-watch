@@ -40,6 +40,7 @@ SESSION_SECRET=$(secret)
 CONTENT_SIGNING_SECRET=$(secret)
 INTERNAL_HOOK_TOKEN=$(secret)
 MEDIA_JWT_SECRET=$(secret)
+OBS_CREDENTIAL_ENCRYPTION_KEY=$(secret)
 LIVEKIT_API_KEY=${livekit_key}
 LIVEKIT_API_SECRET=$(secret)
 EOF
@@ -52,6 +53,11 @@ fi
 set_env RELEASE_TAG "$(basename "$release_dir")"
 set_env PUBLIC_ORIGIN "$public_origin"
 set_env FRIEND_INVITE_TOKEN "$friend_invite_token"
+obs_credential_key=$(grep '^OBS_CREDENTIAL_ENCRYPTION_KEY=' .env.server | cut -d= -f2- || true)
+if [[ ${#obs_credential_key} -lt 32 ]]; then
+  obs_credential_key=$(secret)
+fi
+set_env OBS_CREDENTIAL_ENCRYPTION_KEY "$obs_credential_key"
 set_env MEDIA_ORIGIN "$public_origin"
 set_env LIVEKIT_URL "${public_origin/https:/wss:}"
 set_env TUS_ENDPOINT "${public_origin}/files/"
@@ -144,8 +150,8 @@ if [[ "$clear_existing_data" == "true" ]]; then
     -e UPLOAD_ROOT=/srv-data/uploads \
     -e INBOX_ROOT=/srv-data/inbox \
     -e SUBTITLE_ROOT=/srv-data/subtitles \
-    -e SFTP_INCOMING_ROOT=/srv-data/sftp/incoming \
     -e TRASH_ROOT=/srv-data/trash \
+    -e SFTP_INCOMING_ROOT=/srv-data/sftp/incoming \
     -v /srv/simplewatch:/srv-data \
     app node apps/api/node_modules/tsx/dist/cli.mjs \
     apps/api/src/cli/clear-library.ts

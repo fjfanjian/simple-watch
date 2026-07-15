@@ -27,7 +27,9 @@ const rtcPayloadSchema = z.object({
   memberId: z.string().uuid(),
 });
 
-const mediaPayloadSchema = rtcPayloadSchema.extend({
+const mediaPayloadSchema = z.object({
+  roomId: z.string().min(1),
+  memberId: z.string().min(1),
   sessionIds: z.array(z.string().min(1)).max(32),
 });
 
@@ -37,10 +39,21 @@ export async function processOutboxItem(
 ): Promise<void> {
   if (item.kind === "rtc.remove-participant") {
     const payload = rtcPayloadSchema.parse(item.payload);
-    await dependencies.livekit.removeParticipant(
-      `voice:${payload.roomId}`,
-      payload.memberId,
-    );
+    try {
+      await dependencies.livekit.removeParticipant(
+        `voice:${payload.roomId}`,
+        payload.memberId,
+      );
+    } catch (error) {
+      // LiveKit 对已经离开的成员返回 not found；撤销操作应当幂等，
+      // 否则 outbox 会无意义地持续重试。
+      const message = error instanceof Error ? error.message : String(error);
+      if (
+        !/participant.+(?:does not exist|not found)|not found/i.test(message)
+      ) {
+        throw error;
+      }
+    }
     return;
   }
 

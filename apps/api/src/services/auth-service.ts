@@ -164,6 +164,14 @@ export class AuthService {
     }
   }
 
+  public rotateCsrf(session: AdminSessionRow): string {
+    const credential = createSessionCredential();
+    this.database
+      .prepare("UPDATE admin_sessions SET csrf_hash = ? WHERE id_hash = ?")
+      .run(credential.csrfHash, session.id_hash);
+    return credential.csrfToken;
+  }
+
   public logout(sessionToken: string): void {
     this.database
       .prepare(

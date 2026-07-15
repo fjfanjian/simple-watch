@@ -135,7 +135,7 @@ describe("media compatibility", () => {
     });
   });
 
-  it("reports every incompatible codec constraint", () => {
+  it("accepts high-spec H.265 and marks playback as device-dependent", () => {
     const result = evaluateCompatibility({
       ...compatibleProbe,
       streams: [
@@ -155,17 +155,12 @@ describe("media compatibility", () => {
         },
       ],
     });
-    expect(result.compatible).toBe(false);
-    expect(result.reasons).toEqual([
-      "视频分辨率必须不高于 1920×1080",
-      "视频帧率必须不高于 30 fps",
-      "音频编码必须为 AAC-LC",
-      "节目音频必须为双声道",
-      "节目音频采样率必须为 48 kHz",
-    ]);
+    expect(result.compatible).toBe(true);
+    expect(result.playbackSupport).toBe("device-dependent");
+    expect(result.reasons).toEqual([]);
   });
 
-  it("reports missing tracks, malformed rates, unknown sizes and non-MP4", () => {
+  it("accepts remuxable containers but still rejects a missing video track", () => {
     const result = evaluateCompatibility({
       streams: [
         {
@@ -183,7 +178,7 @@ describe("media compatibility", () => {
         format_name: "matroska",
       },
     });
-    expect(result.compatible).toBe(false);
+    expect(result.compatible).toBe(true);
     expect(result.durationMs).toBeNull();
     expect(result.bytes).toBeNull();
     expect(result.audio).toEqual({
@@ -191,20 +186,12 @@ describe("media compatibility", () => {
       channels: null,
       sampleRate: null,
     });
-    expect(result.reasons).toEqual(
-      expect.arrayContaining([
-        "视频帧率必须不高于 30 fps",
-        "缺少音频轨",
-        "容器必须为 MP4",
-      ]),
-    );
+    expect(result.reasons).toEqual([]);
     const noTracks = evaluateCompatibility({
       streams: [],
       format: {},
     });
-    expect(noTracks.reasons).toEqual(
-      expect.arrayContaining(["缺少视频轨", "缺少音频轨", "容器必须为 MP4"]),
-    );
+    expect(noTracks.reasons).toEqual(["缺少视频轨"]);
   });
 });
 

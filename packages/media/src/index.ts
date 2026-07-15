@@ -37,6 +37,7 @@ export interface MediaCompatibility {
   readonly reasons: readonly string[];
   readonly durationMs: number | null;
   readonly bytes: number | null;
+  readonly container: string | null;
   readonly video: {
     readonly codec: string | null;
     readonly width: number | null;
@@ -119,35 +120,6 @@ export function evaluateCompatibility(probeInput: unknown): MediaCompatibility {
   else {
     if (!new Set(["h264", "hevc"]).has(video.codec_name ?? ""))
       reasons.push("视频编码必须为 H.264 或 H.265/HEVC");
-    if (
-      !video.width ||
-      !video.height ||
-      video.width > 1920 ||
-      video.height > 1080
-    ) {
-      reasons.push("视频分辨率必须不高于 1920×1080");
-    }
-    if (fps === null || fps > 30.5) reasons.push("视频帧率必须不高于 30 fps");
-    if (video.codec_name === "h264" && video.pix_fmt !== "yuv420p") {
-      reasons.push("H.264 视频像素格式必须为 yuv420p 8-bit SDR");
-    }
-    if (
-      video.codec_name === "hevc" &&
-      !new Set(["yuv420p", "yuv420p10le"]).has(video.pix_fmt ?? "")
-    ) {
-      reasons.push("H.265 视频像素格式必须为 yuv420p 或 yuv420p10le");
-    }
-  }
-
-  if (!audio) reasons.push("缺少音频轨");
-  else {
-    if (audio.codec_name !== "aac") reasons.push("音频编码必须为 AAC-LC");
-    if (audio.channels !== 2) reasons.push("节目音频必须为双声道");
-    if (sampleRate !== 48_000) reasons.push("节目音频采样率必须为 48 kHz");
-  }
-
-  if (!probe.format.format_name?.split(",").includes("mp4")) {
-    reasons.push("容器必须为 MP4");
   }
 
   return {
@@ -155,11 +127,16 @@ export function evaluateCompatibility(probeInput: unknown): MediaCompatibility {
     playbackSupport:
       reasons.length > 0
         ? "unsupported"
-        : video?.codec_name === "hevc"
+        : video?.codec_name === "hevc" ||
+            video?.pix_fmt !== "yuv420p" ||
+            (video.width ?? 0) > 1920 ||
+            (video.height ?? 0) > 1080 ||
+            (fps ?? 0) > 30.5
           ? "device-dependent"
           : "broad",
     fastStart: true,
     reasons,
+    container: probe.format.format_name ?? null,
     durationMs:
       durationSeconds === null ? null : Math.round(durationSeconds * 1000),
     bytes,

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as tus from "tus-js-client";
-import { type FormEvent, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import {
@@ -25,6 +25,7 @@ export function AdminPage() {
   const { adminCsrf, setAdminCsrf, setRoomCsrf, setMemberId } = useSession();
   const [code, setCode] = useState("");
   const [message, setMessage] = useState("");
+  const [selectedMedia, setSelectedMedia] = useState<string[]>([]);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(
     null,
   );
@@ -32,6 +33,13 @@ export function AdminPage() {
   const speedRef = useRef({ at: 0, bytes: 0, smoothed: 0 });
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (adminCsrf) return;
+    void api<{ csrfToken: string }>("/api/v1/admin/session")
+      .then((session) => setAdminCsrf(session.csrfToken))
+      .catch(() => undefined);
+  }, [adminCsrf, setAdminCsrf]);
 
   const media = useQuery({
     queryKey: ["media"],
@@ -139,7 +147,7 @@ export function AdminPage() {
         body: JSON.stringify({
           filename: file.name,
           bytes: file.size,
-          mime: "video/mp4",
+          mime: file.type || "application/octet-stream",
         }),
       });
     } catch (error) {
@@ -158,7 +166,10 @@ export function AdminPage() {
     const upload = new tus.Upload(file, {
       endpoint: auth.tusEndpoint,
       headers: { "Upload-Token": auth.uploadToken },
-      metadata: { filename: file.name, filetype: "video/mp4" },
+      metadata: {
+        filename: file.name,
+        filetype: file.type || "application/octet-stream",
+      },
       chunkSize: 16 * 1024 * 1024,
       retryDelays: [0, 1000, 3000, 5000],
       removeFingerprintOnSuccess: true,
@@ -257,6 +268,34 @@ export function AdminPage() {
       }),
     });
     setMessage(`字幕 ${file.name} 已进入处理队列`);
+    await queryClient.invalidateQueries({ queryKey: ["media"] });
+  }
+
+  async function deleteMedia(ids: string[]) {
+    if (!adminCsrf || ids.length === 0) return;
+    if (!confirm(`确认将 ${ids.length} 条影片移入回收站？`)) return;
+    try {
+      for (const id of ids) {
+        await api<void>(`/api/v1/admin/media/${id}`, {
+          method: "DELETE",
+          headers: { "x-csrf-token": adminCsrf },
+        });
+      }
+      setSelectedMedia([]);
+      setMessage(`${ids.length} 条影片已移入回收站`);
+      await queryClient.invalidateQueries({ queryKey: ["media"] });
+    } catch (error) {
+      setMessage(error instanceof ApiError ? error.message : "删除影片失败");
+    }
+  }
+
+  async function rescanMedia(mediaId: string) {
+    if (!adminCsrf) return;
+    await api(`/api/v1/admin/media/${mediaId}/rescan`, {
+      method: "POST",
+      headers: { "x-csrf-token": adminCsrf },
+    });
+    setMessage("已重新送检；服务器将按新的兼容规则重封装并入库");
     await queryClient.invalidateQueries({ queryKey: ["media"] });
   }
 
@@ -405,7 +444,7 @@ export function AdminPage() {
           >
             <input
               type="file"
-              accept=".mp4,video/mp4"
+              accept="video/*,.mp4,.mkv,.mov,.m4v,.webm,.avi,.ts,.mts"
               disabled={
                 uploadProgress?.state === "uploading" ||
                 uploadProgress?.state === "cancelling"
@@ -417,7 +456,10 @@ export function AdminPage() {
               }}
             />
             <strong>选择影片</strong>
-            <small>选择一条 MP4 文件送入片库</small>
+            <small>
+              可选择 MP4、MKV、MOV
+              等常见视频；服务器只重封装和必要的音频转换，不重编码视频
+            </small>
           </label>
           {uploadProgress && (
             <div className="upload-progress" aria-live="polite">
@@ -460,10 +502,31 @@ export function AdminPage() {
             <span>03</span>
             <h2>片库</h2>
             <b>{media.data?.length ?? 0} REELS</b>
+            {selectedMedia.length > 0 && (
+              <button
+                type="button"
+                className="danger-button"
+                onClick={() => void deleteMedia(selectedMedia)}
+              >
+                删除选中（{selectedMedia.length}）
+              </button>
+            )}
           </div>
           <div className="media-list">
             {media.data?.map((item, index) => (
               <article key={item.id} className="media-row">
+                <input
+                  aria-label={`选择 ${item.displayName}`}
+                  type="checkbox"
+                  checked={selectedMedia.includes(item.id)}
+                  onChange={(event) =>
+                    setSelectedMedia((previous) =>
+                      event.target.checked
+                        ? [...previous, item.id]
+                        : previous.filter((id) => id !== item.id),
+                    )
+                  }
+                />
                 <span className="reel-number">
                   {String(index + 1).padStart(2, "0")}
                 </span>
@@ -480,6 +543,19 @@ export function AdminPage() {
                 <span className={`media-state state-${item.state}`}>
                   {stateLabel(item.state)}
                 </span>
+                {item.compatibilityReasons.length > 0 && (
+                  <small className="media-reason">
+                    {item.compatibilityReasons.join("；")}
+                  </small>
+                )}
+                {item.state === "incompatible" && (
+                  <button
+                    type="button"
+                    onClick={() => void rescanMedia(item.id)}
+                  >
+                    按新规则重检
+                  </button>
+                )}
                 {item.state === "published" && (
                   <label className="subtitle-upload">
                     添加 WebVTT 字幕
@@ -494,6 +570,13 @@ export function AdminPage() {
                     />
                   </label>
                 )}
+                <button
+                  type="button"
+                  className="text-button danger"
+                  onClick={() => void deleteMedia([item.id])}
+                >
+                  删除
+                </button>
               </article>
             ))}
             {!media.data?.length && (

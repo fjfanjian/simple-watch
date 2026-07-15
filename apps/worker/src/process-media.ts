@@ -56,17 +56,15 @@ export async function processProbeJob(
   const needsRemux =
     compatibility.compatible &&
     (!compatibility.fastStart ||
+      !compatibility.container?.split(",").includes("mp4") ||
       (compatibility.video.codec === "hevc" &&
-        compatibility.video.codecTag?.toLowerCase() !== "hvc1"));
+        compatibility.video.codecTag?.toLowerCase() !== "hvc1") ||
+      compatibility.audio.codec !== "aac" ||
+      (compatibility.audio.channels ?? 0) > 2);
   if (needsRemux) {
     const temporary = `${finalPath}.${randomUUID()}.remux.mp4`;
     try {
-      await remuxForBrowser(
-        source,
-        temporary,
-        compatibility.video.codec,
-        ffmpegPath,
-      );
+      await remuxForBrowser(source, temporary, compatibility, ffmpegPath);
       const verified = await probeFile(temporary, ffprobePath);
       if (
         !verified.compatibility.compatible ||
@@ -104,11 +102,35 @@ export async function processProbeJob(
 export async function remuxForBrowser(
   source: string,
   destination: string,
-  codec: string | null,
+  compatibility: {
+    readonly video: { readonly codec: string | null };
+    readonly audio: {
+      readonly codec: string | null;
+      readonly channels: number | null;
+    };
+  },
   ffmpegPath = "ffmpeg",
 ): Promise<void> {
-  const args = ["-v", "error", "-y", "-i", source, "-map", "0", "-c", "copy"];
-  if (codec === "hevc") args.push("-tag:v", "hvc1");
+  const args = [
+    "-v",
+    "error",
+    "-y",
+    "-i",
+    source,
+    "-map",
+    "0:v:0",
+    "-map",
+    "0:a:0?",
+    "-c:v",
+    "copy",
+  ];
+  if (
+    compatibility.audio.codec === "aac" &&
+    (compatibility.audio.channels ?? 0) <= 2
+  )
+    args.push("-c:a", "copy");
+  else args.push("-c:a", "aac", "-ac", "2", "-ar", "48000");
+  if (compatibility.video.codec === "hevc") args.push("-tag:v", "hvc1");
   args.push("-movflags", "+faststart", destination);
   await execFileAsync(ffmpegPath, args, {
     encoding: "utf8",

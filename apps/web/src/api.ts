@@ -40,6 +40,7 @@ export interface MediaItem {
   displayName: string;
   state: "scanning" | "compatible" | "incompatible" | "failed" | "published";
   bytes: number;
+  compatibilityReasons: string[];
   durationMs: number | null;
   video: {
     codec: "h264" | "hevc" | null;
@@ -48,6 +49,11 @@ export interface MediaItem {
     height: number | null;
     fps: number | null;
     pixelFormat: string | null;
+  };
+  audio: {
+    codec: string | null;
+    channels: number | null;
+    sampleRate: number | null;
   };
   subtitles: Array<{
     id: string;

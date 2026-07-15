@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   mkdirSync,
+  renameSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -40,6 +41,7 @@ interface MediaRow {
   readonly video_height: number | null;
   readonly video_fps: number | null;
   readonly video_pixel_format: string | null;
+  readonly probe_json: string | null;
   readonly created_at: number;
 }
 
@@ -76,6 +78,7 @@ export interface MediaServiceOptions {
   readonly uploadRoot: string;
   readonly inboxRoot: string;
   readonly subtitleRoot: string;
+  readonly trashRoot: string;
   readonly tusEndpoint: string;
   readonly contentSigningSecret: string;
   readonly now?: () => number;
@@ -100,22 +103,102 @@ export class MediaService {
     mkdirSync(options.uploadRoot, { recursive: true });
     mkdirSync(options.inboxRoot, { recursive: true });
     mkdirSync(options.subtitleRoot, { recursive: true });
+    mkdirSync(options.trashRoot, { recursive: true });
   }
 
   public listMedia() {
+    this.purgeExpiredTrash();
     const rows = this.database
       .prepare(
         `SELECT id, storage_key, display_name, state, bytes, mime, duration_ms, created_at,
                 video_codec, playback_support, video_width, video_height,
-                video_fps, video_pixel_format
+                video_fps, video_pixel_format, probe_json
          FROM media WHERE trashed_at IS NULL ORDER BY created_at DESC`,
       )
       .all() as MediaRow[];
     return rows.map((row) => this.serializeMediaWithSubtitles(row));
   }
 
+  private purgeExpiredTrash(): void {
+    const cutoff = this.now() - 24 * 60 * 60 * 1000;
+    const rows = this.database
+      .prepare(
+        "SELECT storage_key, trashed_at FROM media WHERE trashed_at IS NOT NULL AND trashed_at <= ?",
+      )
+      .all(cutoff) as Array<{ storage_key: string; trashed_at: number }>;
+    for (const row of rows) {
+      rmSync(
+        join(this.options.trashRoot, `${row.storage_key}-${row.trashed_at}`),
+        {
+          recursive: true,
+          force: true,
+        },
+      );
+      this.database
+        .prepare("DELETE FROM media WHERE storage_key = ?")
+        .run(row.storage_key);
+    }
+  }
+
   public getMedia(mediaId: string) {
     return this.serializeMediaWithSubtitles(this.getMediaRow(mediaId));
+  }
+
+  public trashMedia(adminId: string, mediaId: string): void {
+    void adminId;
+    const row = this.getMediaRow(mediaId);
+    const source = storedFinalPath(row.probe_json);
+    if (source) {
+      const root =
+        row.state === "incompatible"
+          ? this.options.inboxRoot
+          : this.options.mediaRoot;
+      const safeSource = requirePathWithin(source, root);
+      renameSync(
+        safeSource,
+        join(this.options.trashRoot, `${row.storage_key}-${this.now()}`),
+      );
+    }
+    this.database
+      .prepare("UPDATE media SET trashed_at = ? WHERE id = ?")
+      .run(this.now(), row.id);
+  }
+
+  public rescanMedia(adminId: string, mediaId: string): { jobId: string } {
+    void adminId;
+    const row = this.getMediaRow(mediaId);
+    if (row.state !== "incompatible")
+      throw conflict("MEDIA_NOT_RESCANNABLE", "只有待兼容影片可以重新检片");
+    const filePath = storedFinalPath(row.probe_json);
+    if (!filePath) throw conflict("MEDIA_SOURCE_MISSING", "找不到原始影片文件");
+    requirePathWithin(filePath, this.options.inboxRoot);
+    const jobId = uuidv7();
+    const now = this.now();
+    this.database.transaction(() => {
+      this.database
+        .prepare("UPDATE media SET state = 'scanning' WHERE id = ?")
+        .run(row.id);
+      this.database
+        .prepare(
+          `INSERT INTO media_jobs(
+            id, media_id, kind, state, attempts, not_before, lease_until,
+            error_code, created_at, updated_at, payload_json
+          ) VALUES (?, ?, 'probe', 'pending', 0, ?, NULL, NULL, ?, ?, ?)`,
+        )
+        .run(
+          jobId,
+          row.id,
+          now,
+          now,
+          now,
+          JSON.stringify({
+            filePath,
+            storageKey: row.storage_key,
+            source: "sftp",
+          }),
+        );
+    })();
+    return { jobId };
   }
 
   public createSubtitleJob(
@@ -738,7 +821,7 @@ export class MediaService {
       .prepare(
         `SELECT id, storage_key, display_name, state, bytes, mime, duration_ms, created_at,
                 video_codec, playback_support, video_width, video_height,
-                video_fps, video_pixel_format
+                video_fps, video_pixel_format, probe_json
          FROM media WHERE id = ? AND trashed_at IS NULL`,
       )
       .get(mediaId) as MediaRow | undefined;
@@ -799,12 +882,14 @@ export class MediaService {
 }
 
 function serializeMedia(row: MediaRow) {
+  const probe = parseStoredProbe(row.probe_json);
   return {
     id: row.id,
     displayName: row.display_name,
     state: row.state,
     bytes: row.bytes,
     mime: row.mime,
+    compatibilityReasons: probe.reasons,
     durationMs: row.duration_ms,
     video: {
       codec: row.video_codec,
@@ -814,8 +899,52 @@ function serializeMedia(row: MediaRow) {
       fps: row.video_fps,
       pixelFormat: row.video_pixel_format,
     },
+    audio: probe.audio,
     createdAt: new Date(row.created_at).toISOString(),
   };
+}
+
+function parseStoredProbe(value: string | null): {
+  reasons: string[];
+  audio: {
+    codec: string | null;
+    channels: number | null;
+    sampleRate: number | null;
+  };
+} {
+  try {
+    const stored = JSON.parse(value ?? "{}") as {
+      probe?: unknown;
+      reasons?: unknown;
+    };
+    const compatibility = evaluateCompatibility(stored.probe);
+    return {
+      reasons: Array.isArray(stored.reasons)
+        ? stored.reasons.filter(
+            (reason): reason is string => typeof reason === "string",
+          )
+        : [...compatibility.reasons],
+      audio: {
+        codec: compatibility.audio.codec,
+        channels: compatibility.audio.channels,
+        sampleRate: compatibility.audio.sampleRate,
+      },
+    };
+  } catch {
+    return {
+      reasons: [],
+      audio: { codec: null, channels: null, sampleRate: null },
+    };
+  }
+}
+
+function storedFinalPath(value: string | null): string | null {
+  try {
+    const stored = JSON.parse(value ?? "{}") as { finalPath?: unknown };
+    return typeof stored.finalPath === "string" ? stored.finalPath : null;
+  } catch {
+    return null;
+  }
 }
 
 function serializeUpload(row: UploadRow) {

@@ -1,15 +1,20 @@
-import { type FormEvent, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { type FormEvent, useEffect, useState } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { api, ApiError } from "../api.js";
 import { useSession } from "../store.js";
 
 export function JoinPage() {
   const { inviteToken = "" } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const { setRoomCsrf, setMemberId } = useSession();
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    sessionStorage.setItem("simplewatch.friend-entry", location.pathname);
+  }, [location.pathname]);
 
   async function join(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

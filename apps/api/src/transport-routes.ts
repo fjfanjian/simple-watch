@@ -34,7 +34,7 @@ export function registerTransportRoutes(
         response: { 200: credentialResponseSchema },
       },
     },
-    async (request) => {
+    (request) => {
       const identity = roomService.authenticate(
         request.cookies.sw_room,
         request.params.roomId,
@@ -54,7 +54,7 @@ export function registerTransportRoutes(
         },
       },
     },
-    async (request) => {
+    (request) => {
       roomService.authenticate(request.cookies.sw_room, request.params.roomId);
       return transportService.getLiveStatus(request.params.roomId);
     },
@@ -94,7 +94,7 @@ export function registerTransportRoutes(
     },
   );
 
-  app.post(
+  app.get(
     "/api/v1/rooms/:roomId/live/publish-config",
     {
       schema: {
@@ -102,13 +102,12 @@ export function registerTransportRoutes(
         response: { 200: credentialResponseSchema },
       },
     },
-    async (request) => {
+    (request) => {
       const identity = roomService.authenticate(
         request.cookies.sw_room,
         request.params.roomId,
       );
-      roomService.requireCsrf(identity, header(request, "x-csrf-token"));
-      return transportService.issuePublishCredential(identity);
+      return transportService.getStablePublishCredential(identity);
     },
   );
 

@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { Room as LiveKitRoom } from "livekit-client";
 import { v7 as uuidv7 } from "uuid";
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import {
   api,
@@ -15,14 +15,17 @@ import { useSession } from "../store.js";
 
 export function RoomPage() {
   const { roomId = "" } = useParams();
+  const navigate = useNavigate();
   const { adminCsrf, roomCsrf, setRoomCsrf, memberId, setMemberId } =
     useSession();
   const [snapshot, setSnapshot] = useState<RoomSnapshot | null>(null);
   const [joined, setJoined] = useState(false);
   const [error, setError] = useState("");
   const [connected, setConnected] = useState(false);
+  const [theaterMode, setTheaterMode] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const screenRef = useRef<HTMLElement | null>(null);
   const voiceRoomRef = useRef<LiveKitRoom | null>(null);
   const voiceTracksRef = useRef<HTMLDivElement | null>(null);
   const liveReaderRef = useRef<{ close(): void } | null>(null);
@@ -155,9 +158,24 @@ export function RoomPage() {
         setConnected(true);
         socket.send(JSON.stringify(envelope(roomId, "room.hello", {})));
       });
-      socket.addEventListener("close", () => {
+      socket.addEventListener("close", (event) => {
         setConnected(false);
         if (disposed) return;
+        if ([4001, 4003, 4010].includes(event.code)) {
+          closeLiveProgram();
+          voiceRoomRef.current?.disconnect();
+          voiceRoomRef.current = null;
+          setVoiceState("idle");
+          setError(
+            event.code === 4003
+              ? "你已被主持人移出放映室"
+              : event.code === 4010
+                ? "放映室已关闭"
+                : "你已退出放映室",
+          );
+          void navigate("/", { replace: true });
+          return;
+        }
         const delay = Math.min(15_000, 1000 * 2 ** retryAttempt);
         retryAttempt += 1;
         retryTimer = window.setTimeout(connect, delay);
@@ -185,7 +203,7 @@ export function RoomPage() {
       socketRef.current?.close(1000, "page leave");
       socketRef.current = null;
     };
-  }, [joined, roomId]);
+  }, [joined, navigate, roomId]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -205,7 +223,7 @@ export function RoomPage() {
   }, [programEnabled, snapshot?.mode, snapshot?.revision, snapshot?.transport]);
 
   useEffect(() => {
-    if (snapshot?.mode !== "live") {
+    if (snapshot?.mode !== "live" || isHost) {
       closeLiveProgram();
       return;
     }
@@ -214,7 +232,13 @@ export function RoomPage() {
       return;
     }
     if (!liveReaderRef.current) void enableLiveProgram();
-  }, [liveRetry, liveStatus.data?.state, programEnabled, snapshot?.mode]);
+  }, [
+    isHost,
+    liveRetry,
+    liveStatus.data?.state,
+    programEnabled,
+    snapshot?.mode,
+  ]);
 
   useEffect(
     () => () => {
@@ -309,7 +333,7 @@ export function RoomPage() {
   }
 
   async function enableLiveProgram() {
-    if (!roomCsrf || liveReaderRef.current) return;
+    if (!roomCsrf || liveReaderRef.current || isHost) return;
     setLiveProgramState("connecting");
     try {
       const credential = await api<{ url: string; token: string }>(
@@ -391,7 +415,11 @@ export function RoomPage() {
           .catch(() => setError("无法启用节目声音，请检查浏览器媒体权限"));
       }
     }
-    if (snapshot?.mode === "live" && liveStatus.data?.state === "online") {
+    if (
+      !isHost &&
+      snapshot?.mode === "live" &&
+      liveStatus.data?.state === "online"
+    ) {
       await enableLiveProgram();
     }
   }
@@ -404,37 +432,71 @@ export function RoomPage() {
     setMicrophoneEnabled(next);
   }
 
-  async function moderate(action: "kick" | "handoff", targetMemberId: string) {
-    if (
-      !roomCsrf ||
-      !confirm(action === "kick" ? "确认移出这位成员？" : "确认移交主持权？")
-    )
-      return;
-    const path =
-      action === "kick"
-        ? `/api/v1/rooms/${roomId}/members/${targetMemberId}/kick`
-        : `/api/v1/rooms/${roomId}/host/handoff`;
-    const result = await api<RoomSnapshot | undefined>(path, {
-      method: "POST",
-      headers: { "x-csrf-token": roomCsrf },
-      body: JSON.stringify(
-        action === "kick" ? { reason: "host_removed" } : { targetMemberId },
-      ),
-    });
-    if (result) setSnapshot(result);
-  }
-
-  async function requestPublishConfig() {
-    if (!roomCsrf) return;
-    const result = await api<{ url: string; token: string }>(
-      `/api/v1/rooms/${roomId}/live/publish-config`,
+  async function removeMember(targetMemberId: string) {
+    if (!roomCsrf || !confirm("确认移出这位成员？对方将立即断开。")) return;
+    const result = await api<RoomSnapshot>(
+      `/api/v1/rooms/${roomId}/members/${targetMemberId}/kick`,
       {
         method: "POST",
         headers: { "x-csrf-token": roomCsrf },
-        body: "{}",
+        body: JSON.stringify({ reason: "host_removed" }),
+      },
+    );
+    setSnapshot(result);
+  }
+
+  async function requestPublishConfig() {
+    const result = await api<{ url: string; token: string }>(
+      `/api/v1/rooms/${roomId}/live/publish-config`,
+      { method: "GET" },
+    );
+    setPublishConfig(result);
+  }
+
+  async function rotatePublishConfig() {
+    if (!adminCsrf) return;
+    const confirmation = prompt(
+      "这会让正在使用旧配置的 OBS 立即断开。输入“重新生成OBS配置”确认。",
+    );
+    if (confirmation !== "重新生成OBS配置") return;
+    const result = await api<{ url: string; token: string }>(
+      "/api/v1/admin/obs-credentials/rotate",
+      {
+        method: "POST",
+        headers: { "x-csrf-token": adminCsrf },
+        body: JSON.stringify({ confirmation }),
       },
     );
     setPublishConfig(result);
+  }
+
+  async function leaveRoom() {
+    if (!roomCsrf || !confirm("确认离开放映室？")) return;
+    await api<void>(`/api/v1/rooms/${roomId}/leave`, {
+      method: "POST",
+      headers: { "x-csrf-token": roomCsrf },
+    });
+    closeLiveProgram();
+    voiceRoomRef.current?.disconnect();
+    void navigate("/", { replace: true });
+  }
+
+  async function closeRoom() {
+    if (!roomCsrf || !confirm("确认关闭放映室？所有成员会立即退出。")) return;
+    await api<void>(`/api/v1/rooms/${roomId}`, {
+      method: "DELETE",
+      headers: { "x-csrf-token": roomCsrf },
+    });
+    closeLiveProgram();
+    voiceRoomRef.current?.disconnect();
+    void navigate("/admin", { replace: true });
+  }
+
+  async function toggleFullscreen() {
+    const screen = screenRef.current;
+    if (!screen) return;
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await screen.requestFullscreen();
   }
 
   function setParticipantVolume(id: string, value: number) {
@@ -470,7 +532,7 @@ export function RoomPage() {
     );
 
   return (
-    <main className="room-shell">
+    <main className={`room-shell${theaterMode ? " theater-mode" : ""}`}>
       <header className="room-header">
         <Link to="/" className="brand-mark">
           SIMPLEWATCH
@@ -482,12 +544,30 @@ export function RoomPage() {
           {connected ? "同步在线" : "正在重连"}
         </span>
         <nav className="room-links">
+          {isHost && <Link to="/admin">返回放映控制</Link>}
           <Link to="/settings">设置</Link>
           <Link to="/diagnostics">诊断</Link>
+          {isHost ? (
+            <button
+              type="button"
+              className="text-button danger"
+              onClick={() => void closeRoom()}
+            >
+              关闭房间
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => void leaveRoom()}
+            >
+              退出房间
+            </button>
+          )}
         </nav>
       </header>
       <div className="screen-layout">
-        <section className="screen-frame">
+        <section className="screen-frame" ref={screenRef}>
           <div className="screen-meta">
             <span>
               {snapshot?.mode === "vod"
@@ -505,8 +585,19 @@ export function RoomPage() {
               H.265 的 Safari、Edge 或设备。
             </div>
           )}
-          {snapshot?.mode === "live" ? (
+          {snapshot?.mode === "live" && !isHost ? (
             <video ref={videoRef} controls={false} playsInline />
+          ) : snapshot?.mode === "live" && isHost ? (
+            <div className="live-director-view">
+              <p className="eyebrow">LIVE CONTROL / OBS</p>
+              <h2>{liveLabel(liveStatus.data?.state)}</h2>
+              <p>
+                直播节目只发送给观看者。放映者在此只保留播控与语音，避免回传节目音频造成重复。
+              </p>
+              <button onClick={() => command({ kind: "restore-vod" })}>
+                返回服务器影片
+              </button>
+            </div>
           ) : snapshot?.media ? (
             <video
               ref={videoRef}
@@ -537,72 +628,93 @@ export function RoomPage() {
               <p>等待主持人装片</p>
             </div>
           )}
-          <div className="transport-bar">
-            <button
-              disabled={!isHost}
-              onClick={() =>
-                command({
-                  kind:
-                    snapshot?.transport?.state === "playing" ? "pause" : "play",
-                })
-              }
-            >
-              {snapshot?.transport?.state === "playing" ? "Ⅱ 暂停" : "▶ 播放"}
-            </button>
-            <button
-              disabled={!isHost}
-              onClick={() =>
-                command({
-                  kind: "seek",
-                  positionSec: Math.max(
-                    0,
-                    (videoRef.current?.currentTime ?? 0) - 10,
-                  ),
-                })
-              }
-            >
-              −10s
-            </button>
-            <button
-              disabled={!isHost}
-              onClick={() =>
-                command({
-                  kind: "seek",
-                  positionSec: (videoRef.current?.currentTime ?? 0) + 10,
-                })
-              }
-            >
-              +10s
-            </button>
-            <select
-              disabled={!isHost}
-              aria-label="播放速度"
-              value={snapshot?.transport?.rate ?? 1}
-              onChange={(event) =>
-                command({ kind: "set-rate", rate: Number(event.target.value) })
-              }
-            >
-              {[0.5, 0.75, 1, 1.25, 1.5, 2].map((rate) => (
-                <option key={rate} value={rate}>
-                  {rate}×
-                </option>
-              ))}
-            </select>
-          </div>
+          {snapshot?.mode === "vod" && (
+            <div className="transport-bar">
+              <button
+                disabled={!isHost}
+                onClick={() =>
+                  command({
+                    kind:
+                      snapshot?.transport?.state === "playing"
+                        ? "pause"
+                        : "play",
+                  })
+                }
+              >
+                {snapshot?.transport?.state === "playing" ? "Ⅱ 暂停" : "▶ 播放"}
+              </button>
+              <button
+                disabled={!isHost}
+                onClick={() =>
+                  command({
+                    kind: "seek",
+                    positionSec: Math.max(
+                      0,
+                      (videoRef.current?.currentTime ?? 0) - 10,
+                    ),
+                  })
+                }
+              >
+                −10s
+              </button>
+              <button
+                disabled={!isHost}
+                onClick={() =>
+                  command({
+                    kind: "seek",
+                    positionSec: (videoRef.current?.currentTime ?? 0) + 10,
+                  })
+                }
+              >
+                +10s
+              </button>
+              <select
+                disabled={!isHost}
+                aria-label="播放速度"
+                value={snapshot?.transport?.rate ?? 1}
+                onChange={(event) =>
+                  command({
+                    kind: "set-rate",
+                    rate: Number(event.target.value),
+                  })
+                }
+              >
+                {[0.5, 0.75, 1, 1.25, 1.5, 2].map((rate) => (
+                  <option key={rate} value={rate}>
+                    {rate}×
+                  </option>
+                ))}
+              </select>
+              <button type="button" onClick={() => void toggleFullscreen()}>
+                屏幕全屏
+              </button>
+              <button
+                type="button"
+                onClick={() => setTheaterMode((value) => !value)}
+              >
+                {theaterMode ? "退出网页全屏" : "网页全屏"}
+              </button>
+            </div>
+          )}
           <div className="local-mix">
-            <button
-              type="button"
-              className={
-                programEnabled ? "secondary-button active" : "secondary-button"
-              }
-              onClick={() => void enableProgramSound()}
-            >
-              {programEnabled
-                ? snapshot?.mode === "live" && liveProgramState === "connecting"
-                  ? "节目连接中…"
-                  : "节目声音已启用"
-                : "启用节目声音"}
-            </button>
+            {!isHost && (
+              <button
+                type="button"
+                className={
+                  programEnabled
+                    ? "secondary-button active"
+                    : "secondary-button"
+                }
+                onClick={() => void enableProgramSound()}
+              >
+                {programEnabled
+                  ? snapshot?.mode === "live" &&
+                    liveProgramState === "connecting"
+                    ? "节目连接中…"
+                    : "节目声音已启用"
+                  : "启用节目声音"}
+              </button>
+            )}
             <label>
               节目音量{" "}
               <input
@@ -656,9 +768,15 @@ export function RoomPage() {
                     </option>
                   ))}
               </select>
-              <button onClick={() => command({ kind: "select-live" })}>
-                切换直播
-              </button>
+              {snapshot?.mode === "live" ? (
+                <button onClick={() => command({ kind: "restore-vod" })}>
+                  返回服务器影片
+                </button>
+              ) : (
+                <button onClick={() => command({ kind: "select-live" })}>
+                  切换直播
+                </button>
+              )}
               <button onClick={() => void requestPublishConfig()}>
                 生成 OBS 配置
               </button>
@@ -680,6 +798,13 @@ export function RoomPage() {
                     }
                   >
                     复制
+                  </button>
+                  <button
+                    type="button"
+                    className="text-button danger"
+                    onClick={() => void rotatePublishConfig()}
+                  >
+                    重新生成 OBS 配置
                   </button>
                 </div>
               )}
@@ -717,10 +842,7 @@ export function RoomPage() {
                 )}
                 {isHost && member.id !== memberId && (
                   <span className="member-actions">
-                    <button onClick={() => void moderate("handoff", member.id)}>
-                      移交
-                    </button>
-                    <button onClick={() => void moderate("kick", member.id)}>
+                    <button onClick={() => void removeMember(member.id)}>
                       移出
                     </button>
                   </span>

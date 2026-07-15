@@ -129,6 +129,22 @@ export function registerMediaRoutes(
   );
 
   app.post(
+    "/api/v1/admin/media/:mediaId/rescan",
+    {
+      schema: {
+        params: mediaParamsSchema,
+        response: { 202: z.object({ jobId: z.string().uuid() }) },
+      },
+    },
+    (request, reply) => {
+      const admin = authService.authenticate(request.cookies.sw_admin);
+      authService.requireCsrf(admin, header(request, "x-csrf-token"));
+      reply.status(202);
+      return mediaService.rescanMedia(admin.admin_id, request.params.mediaId);
+    },
+  );
+
+  app.post(
     "/api/v1/admin/media/:mediaId/subtitles",
     {
       schema: {
@@ -145,6 +161,18 @@ export function registerMediaRoutes(
         request.params.mediaId,
         request.body,
       );
+    },
+  );
+
+  app.delete(
+    "/api/v1/admin/media/:mediaId",
+    { schema: { params: mediaParamsSchema, response: { 204: z.null() } } },
+    (request, reply) => {
+      const admin = authService.authenticate(request.cookies.sw_admin);
+      authService.requireCsrf(admin, header(request, "x-csrf-token"));
+      mediaService.trashMedia(admin.admin_id, request.params.mediaId);
+      reply.status(204);
+      return null;
     },
   );
 

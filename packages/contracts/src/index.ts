@@ -55,10 +55,6 @@ export const updateRoomRequestSchema = z
   });
 export type UpdateRoomRequest = z.infer<typeof updateRoomRequestSchema>;
 
-export const handoffHostRequestSchema = z.object({
-  targetMemberId: participantIdSchema,
-});
-
 export const kickMemberRequestSchema = z.object({
   reason: z.string().trim().max(200).optional(),
 });
@@ -70,7 +66,9 @@ export const uploadAuthorizeRequestSchema = z.object({
     .int()
     .positive()
     .max(50 * 1024 * 1024 * 1024),
-  mime: z.enum(["video/mp4", "application/mp4"]),
+  // 浏览器并不总会为 MKV、M2TS 等文件提供准确 MIME；真实格式由
+  // Worker 中的 ffprobe 判断，不能在 HTTP 层把它误杀。
+  mime: z.string().trim().min(1).max(255),
 });
 export type UploadAuthorizeRequest = z.infer<
   typeof uploadAuthorizeRequestSchema
@@ -90,6 +88,7 @@ export const mediaSchema = z.object({
   state: mediaStateSchema,
   bytes: z.number().int().nonnegative(),
   mime: z.string().nullable(),
+  compatibilityReasons: z.array(z.string()),
   durationMs: z.number().int().nonnegative().nullable(),
   video: z.object({
     codec: z.enum(["h264", "hevc"]).nullable(),
@@ -98,6 +97,11 @@ export const mediaSchema = z.object({
     height: z.number().int().positive().nullable(),
     fps: z.number().nonnegative().nullable(),
     pixelFormat: z.string().nullable(),
+  }),
+  audio: z.object({
+    codec: z.string().nullable(),
+    channels: z.number().int().positive().nullable(),
+    sampleRate: z.number().int().positive().nullable(),
   }),
   createdAt: z.iso.datetime(),
   subtitles: z.array(
@@ -215,6 +219,7 @@ export type RoomSnapshot = z.infer<typeof roomSnapshotSchema>;
 export const roomCommandSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("select-vod"), mediaId: z.string().uuid() }),
   z.object({ kind: z.literal("select-live") }),
+  z.object({ kind: z.literal("restore-vod") }),
   z.object({ kind: z.literal("play") }),
   z.object({ kind: z.literal("pause") }),
   z.object({ kind: z.literal("seek"), positionSec: z.number().nonnegative() }),

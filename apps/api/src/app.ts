@@ -13,7 +13,6 @@ import {
   adminLoginRequestSchema,
   createRoomRequestSchema,
   envelopeSchema,
-  handoffHostRequestSchema,
   joinActiveRoomRequestSchema,
   kickMemberRequestSchema,
   activeRoomSummarySchema,
@@ -78,10 +77,12 @@ export interface BuildAppOptions {
   readonly uploadRoot?: string;
   readonly inboxRoot?: string;
   readonly subtitleRoot?: string;
+  readonly trashRoot?: string;
   readonly tusEndpoint?: string;
   readonly contentSigningSecret?: string;
   readonly internalHookToken?: string;
   readonly mediaJwtSecret?: string;
+  readonly obsCredentialEncryptionKey?: string;
   readonly mediaOrigin?: string;
   readonly livekitApiKey?: string;
   readonly livekitApiSecret?: string;
@@ -124,6 +125,7 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     uploadRoot: options.uploadRoot ?? "tmp/uploads",
     inboxRoot: options.inboxRoot ?? "tmp/inbox",
     subtitleRoot: options.subtitleRoot ?? "tmp/subtitles",
+    trashRoot: options.trashRoot ?? "tmp/trash",
     tusEndpoint: options.tusEndpoint ?? `${options.publicOrigin}/files/`,
     contentSigningSecret:
       options.contentSigningSecret ?? "test-content-signing-secret-32-bytes",
@@ -134,6 +136,9 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
   const transportService = new TransportService(database, {
     mediaJwtSecret:
       options.mediaJwtSecret ?? "test-media-jwt-secret-at-least-32-bytes",
+    obsCredentialEncryptionKey:
+      options.obsCredentialEncryptionKey ??
+      "test-obs-credential-encryption-key-at-least-32-bytes",
     mediaOrigin: options.mediaOrigin ?? options.publicOrigin,
     livekitApiKey: options.livekitApiKey ?? "test-api-key",
     livekitApiSecret:
@@ -180,7 +185,7 @@ export async function buildApp(options: BuildAppOptions): Promise<BuiltApp> {
     }
     const path = request.url.split("?", 1)[0] ?? request.url;
     const isCredentialRequest =
-      request.method === "POST" &&
+      ["GET", "POST"].includes(request.method) &&
       (/^\/api\/v1\/rooms\/[^/]+\/credentials$/.test(path) ||
         /^\/api\/v1\/rooms\/[^/]+\/live\/publish-config$/.test(path));
     const roomSession = request.cookies.sw_room;
@@ -471,33 +476,6 @@ function registerApiRoutes(
   );
 
   app.post(
-    "/api/v1/rooms/:roomId/host/handoff",
-    {
-      schema: {
-        params: roomParamsSchema,
-        body: handoffHostRequestSchema,
-        response: { 200: roomSnapshotSchema },
-      },
-    },
-    (request) => {
-      const identity = roomService.authenticate(
-        request.cookies.sw_room,
-        request.params.roomId,
-      );
-      roomService.requireCsrf(identity, getHeader(request, "x-csrf-token"));
-      const snapshot = roomService.handoffHost(
-        identity,
-        request.body.targetMemberId,
-      );
-      hub.broadcast(
-        identity.roomId,
-        createEnvelope(identity.roomId, "host.changed", snapshot, now),
-      );
-      return snapshot;
-    },
-  );
-
-  app.post(
     "/api/v1/rooms/:roomId/members/:memberId/kick",
     {
       schema: {
@@ -506,10 +484,10 @@ function registerApiRoutes(
           memberId: z.string().uuid(),
         }),
         body: kickMemberRequestSchema,
-        response: { 204: emptyResponseSchema },
+        response: { 200: roomSnapshotSchema },
       },
     },
-    (request, reply) => {
+    (request) => {
       const identity = roomService.authenticate(
         request.cookies.sw_room,
         request.params.roomId,
@@ -523,11 +501,15 @@ function registerApiRoutes(
       hub.closeMember(
         identity.roomId,
         request.params.memberId,
-        4001,
-        "session revoked",
+        4003,
+        "member removed",
       );
-      reply.status(204);
-      return null;
+      const snapshot = roomService.getSnapshot(identity.roomId);
+      hub.broadcast(
+        identity.roomId,
+        createEnvelope(identity.roomId, "room.snapshot", snapshot, now),
+      );
+      return snapshot;
     },
   );
 
@@ -551,6 +533,64 @@ function registerApiRoutes(
         csrfToken: result.csrfToken,
         expiresAt: new Date(result.expiresAt).toISOString(),
       });
+    },
+  );
+
+  app.delete(
+    "/api/v1/rooms/:roomId",
+    {
+      schema: {
+        params: roomParamsSchema,
+        response: {
+          200: z.object({ id: z.string().uuid(), status: z.literal("closed") }),
+        },
+      },
+    },
+    (request) => {
+      const identity = roomService.authenticate(
+        request.cookies.sw_room,
+        request.params.roomId,
+      );
+      roomService.requireCsrf(identity, getHeader(request, "x-csrf-token"));
+      const result = roomService.closeByHost(identity);
+      hub.closeRoom(result.id, 4010, "room closed");
+      return result;
+    },
+  );
+
+  app.get(
+    "/api/v1/admin/session",
+    { schema: { response: { 200: adminLoginResponseSchema } } },
+    (request) => {
+      const admin = authService.authenticate(request.cookies.sw_admin);
+      const csrfToken = authService.rotateCsrf(admin);
+      return {
+        admin: { id: admin.admin_id, username: admin.username },
+        csrfToken,
+        expiresAt: new Date(admin.expires_at).toISOString(),
+      };
+    },
+  );
+
+  app.post(
+    "/api/v1/admin/obs-credentials/rotate",
+    {
+      schema: {
+        body: z.object({ confirmation: z.literal("重新生成OBS配置") }),
+        response: {
+          200: z.object({
+            url: z.url(),
+            token: z.string(),
+            path: z.string(),
+            expiresAt: z.string(),
+          }),
+        },
+      },
+    },
+    (request) => {
+      const admin = authService.authenticate(request.cookies.sw_admin);
+      authService.requireCsrf(admin, getHeader(request, "x-csrf-token"));
+      return transportService.rotateStablePublishCredential();
     },
   );
 
@@ -634,6 +674,12 @@ function registerApiRoutes(
       );
       roomService.requireCsrf(identity, getHeader(request, "x-csrf-token"));
       roomService.leave(identity);
+      const snapshot = roomService.getSnapshot(identity.roomId);
+      hub.closeMember(identity.roomId, identity.memberId, 4001, "member left");
+      hub.broadcast(
+        identity.roomId,
+        createEnvelope(identity.roomId, "room.snapshot", snapshot, now),
+      );
       reply.clearCookie("sw_room", { path: "/" });
       reply.status(204);
       return null;
@@ -716,20 +762,6 @@ function registerWebSocketRoute(
       socket.on("close", () => {
         clearInterval(heartbeat);
         remove();
-        const disconnectedAt = now();
-        const lease = setTimeout(() => {
-          const snapshot = roomService.expireHostLease(
-            identity,
-            disconnectedAt,
-          );
-          if (snapshot) {
-            hub.broadcast(
-              identity.roomId,
-              createEnvelope(identity.roomId, "host.changed", snapshot, now),
-            );
-          }
-        }, 30_000);
-        lease.unref();
       });
       socket.on("message", (data: RawData) => {
         const receivedAtMs = now();

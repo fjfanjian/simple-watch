@@ -1,3 +1,10 @@
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+  timingSafeEqual,
+} from "node:crypto";
 import { TextEncoder } from "node:util";
 
 import { jwtVerify, SignJWT } from "jose";
@@ -17,6 +24,7 @@ import type { RoomIdentity } from "./room-service.js";
 
 interface TransportOptions {
   readonly mediaJwtSecret: string;
+  readonly obsCredentialEncryptionKey: string;
   readonly mediaOrigin: string;
   readonly livekitApiKey: string;
   readonly livekitApiSecret: string;
@@ -36,6 +44,7 @@ const mediaClaimsSchema = z.object({
 export class TransportService {
   private readonly now: () => number;
   private readonly mediaKey: Uint8Array;
+  private readonly obsEncryptionKey: Buffer;
   private readonly webhookReceiver: WebhookReceiver;
 
   public constructor(
@@ -44,6 +53,9 @@ export class TransportService {
   ) {
     this.now = options.now ?? Date.now;
     this.mediaKey = new TextEncoder().encode(options.mediaJwtSecret);
+    this.obsEncryptionKey = createHash("sha256")
+      .update(options.obsCredentialEncryptionKey)
+      .digest();
     this.webhookReceiver = new WebhookReceiver(
       options.livekitApiKey,
       options.livekitApiSecret,
@@ -97,18 +109,88 @@ export class TransportService {
     return this.issueMediaToken(identity, "read", path, 5 * 60_000, purpose);
   }
 
-  public async issuePublishCredential(identity: RoomIdentity) {
+  public getStablePublishCredential(identity: RoomIdentity) {
     if (identity.role !== "host") throw forbidden("只有主持人可以推流");
     this.requireActiveMember(identity.roomId, identity.memberId);
+    const credential = this.getOrCreateStablePublishCredential();
     const path = this.getLivePath(identity.roomId);
-    this.revokePreviousPublishCredentials(identity.roomId);
-    return this.issueMediaToken(
-      identity,
-      "publish",
+    if (path !== credential.path) {
+      this.database
+        .prepare(
+          "UPDATE room_state SET live_path = ?, updated_at = ? WHERE room_id = ?",
+        )
+        .run(credential.path, this.now(), identity.roomId);
+    }
+    return {
+      purpose: "whip" as const,
+      url: `${this.options.mediaOrigin}/program/${credential.path}/whip`,
+      token: credential.token,
+      path: credential.path,
+      // 长期配置不自动过期，只能由管理员明确轮换。
+      expiresAt: "9999-12-31T23:59:59.999Z",
+    };
+  }
+
+  public rotateStablePublishCredential(): {
+    readonly url: string;
+    readonly token: string;
+    readonly path: string;
+    readonly expiresAt: string;
+  } {
+    const previous = this.getOrCreateStablePublishCredential();
+    const path = createOpaqueToken(24);
+    const token = createOpaqueToken(32);
+    const now = this.now();
+    const sessionIds = this.database
+      .prepare(
+        `SELECT mediamtx_session_id FROM media_transport_sessions
+         WHERE action = 'publish' AND path = ? AND closed_at IS NULL
+           AND mediamtx_session_id IS NOT NULL`,
+      )
+      .all(previous.path)
+      .map(
+        (row) => (row as { mediamtx_session_id: string }).mediamtx_session_id,
+      );
+    this.database.transaction(() => {
+      this.database
+        .prepare(
+          `UPDATE broadcast_credentials
+           SET path = ?, token_ciphertext = ?, token_hash = ?, rotated_at = ?
+           WHERE id = 1`,
+        )
+        .run(path, this.encrypt(token), hashToken(token), now);
+      this.database
+        .prepare(
+          "UPDATE room_state SET live_path = ?, updated_at = ? WHERE live_path = ?",
+        )
+        .run(path, now, previous.path);
+      if (sessionIds.length > 0) {
+        this.database
+          .prepare(
+            `INSERT INTO service_outbox(
+              id, kind, dedupe_key, payload_json, state, attempts,
+              not_before, lease_until, last_error, created_at, completed_at
+            ) VALUES (?, 'mediamtx.kick-sessions', ?, ?, 'pending', 0, ?, NULL, NULL, ?, NULL)`,
+          )
+          .run(
+            uuidv7(),
+            `mediamtx-rotate:${uuidv7()}`,
+            JSON.stringify({
+              roomId: "rotation",
+              memberId: "publisher",
+              sessionIds,
+            }),
+            now,
+            now,
+          );
+      }
+    })();
+    return {
+      url: `${this.options.mediaOrigin}/program/${path}/whip`,
+      token,
       path,
-      6 * 60 * 60_000,
-      "whip",
-    );
+      expiresAt: "9999-12-31T23:59:59.999Z",
+    };
   }
 
   public async getLiveStatus(roomId: string): Promise<{
@@ -170,6 +252,10 @@ export class TransportService {
     readonly id?: string | undefined;
   }): Promise<void> {
     if (!input.token) throw unauthorized("缺少媒体凭据");
+    if (input.action === "publish") {
+      this.authorizeStablePublisher(input);
+      return;
+    }
     let payload: z.infer<typeof mediaClaimsSchema>;
     try {
       const verified = await jwtVerify(input.token, this.mediaKey, {
@@ -228,10 +314,10 @@ export class TransportService {
 
   private async issueMediaToken(
     identity: RoomIdentity,
-    action: "read" | "publish",
+    action: "read",
     path: string,
     ttlMs: number,
-    purpose: "whep" | "whip",
+    purpose: "whep",
   ) {
     const jti = createOpaqueToken(24);
     const expiresAt = this.now() + ttlMs;
@@ -289,44 +375,103 @@ export class TransportService {
     if (!row) throw forbidden("房间成员状态无效");
   }
 
-  private revokePreviousPublishCredentials(roomId: string): void {
+  private getOrCreateStablePublishCredential(): {
+    readonly path: string;
+    readonly token: string;
+  } {
+    const row = this.database
+      .prepare(
+        "SELECT path, token_ciphertext FROM broadcast_credentials WHERE id = 1",
+      )
+      .get() as { path: string; token_ciphertext: string } | undefined;
+    if (row)
+      return { path: row.path, token: this.decrypt(row.token_ciphertext) };
+    const path = createOpaqueToken(24);
+    const token = createOpaqueToken(32);
     const now = this.now();
-    this.database.transaction(() => {
+    this.database
+      .prepare(
+        `INSERT INTO broadcast_credentials(
+          id, path, token_ciphertext, token_hash, created_at, rotated_at
+        ) VALUES (1, ?, ?, ?, ?, ?)`,
+      )
+      .run(path, this.encrypt(token), hashToken(token), now, now);
+    return { path, token };
+  }
+
+  private authorizeStablePublisher(input: {
+    readonly token?: string | undefined;
+    readonly path: string;
+    readonly id?: string | undefined;
+  }): void {
+    const row = this.database
+      .prepare(
+        "SELECT path, token_hash FROM broadcast_credentials WHERE id = 1",
+      )
+      .get() as { path: string; token_hash: string } | undefined;
+    if (!row || row.path !== input.path || !input.token) {
+      throw unauthorized("OBS 推流配置无效");
+    }
+    const expected = Buffer.from(row.token_hash);
+    const provided = Buffer.from(hashToken(input.token));
+    if (
+      expected.length !== provided.length ||
+      !timingSafeEqual(expected, provided)
+    )
+      throw unauthorized("OBS 推流码无效");
+    const active = this.database
+      .prepare(
+        `SELECT r.id AS room_id, s.host_member_id
+         FROM rooms r JOIN room_state s ON s.room_id = r.id
+         WHERE r.status = 'active' AND s.live_path = ? LIMIT 1`,
+      )
+      .get(input.path) as
+      | { room_id: string; host_member_id: string }
+      | undefined;
+    if (!active) throw forbidden("放映室未开放，暂不接受推流");
+    if (!input.id) return;
+    const key = hashToken(input.token);
+    const exists = this.database
+      .prepare(
+        "SELECT 1 FROM media_transport_sessions WHERE jti_hash = ? AND mediamtx_session_id = ? AND closed_at IS NULL",
+      )
+      .get(key, input.id);
+    if (!exists) {
       this.database
         .prepare(
-          `UPDATE token_jti SET revoked_at = ?
-           WHERE kind = 'media' AND room_id = ? AND scope = 'publish'
-             AND revoked_at IS NULL`,
-        )
-        .run(now, roomId);
-      const sessionIds = this.database
-        .prepare(
-          `SELECT mediamtx_session_id FROM media_transport_sessions
-           WHERE room_id = ? AND action = 'publish' AND closed_at IS NULL
-             AND mediamtx_session_id IS NOT NULL`,
-        )
-        .all(roomId)
-        .map(
-          (row) =>
-            (row as { readonly mediamtx_session_id: string })
-              .mediamtx_session_id,
-        );
-      if (sessionIds.length === 0) return;
-      const eventId = uuidv7();
-      this.database
-        .prepare(
-          `INSERT INTO service_outbox(
-            id, kind, dedupe_key, payload_json, state, attempts,
-            not_before, lease_until, last_error, created_at, completed_at
-          ) VALUES (?, 'mediamtx.kick-sessions', ?, ?, 'pending', 0, ?, NULL, NULL, ?, NULL)`,
+          `INSERT INTO media_transport_sessions(
+            id, room_id, member_id, jti_hash, mediamtx_session_id,
+            action, path, connected_at, closed_at
+          ) VALUES (?, ?, ?, ?, ?, 'publish', ?, ?, NULL)`,
         )
         .run(
           uuidv7(),
-          `mediamtx-republish:${eventId}`,
-          JSON.stringify({ roomId, memberId: "publisher", sessionIds }),
-          now,
-          now,
+          active.room_id,
+          active.host_member_id,
+          key,
+          input.id,
+          input.path,
+          this.now(),
         );
-    })();
+    }
+  }
+
+  private encrypt(value: string): string {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv("aes-256-gcm", this.obsEncryptionKey, iv);
+    const body = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+    return Buffer.concat([iv, cipher.getAuthTag(), body]).toString("base64url");
+  }
+
+  private decrypt(value: string): string {
+    const payload = Buffer.from(value, "base64url");
+    const iv = payload.subarray(0, 12);
+    const tag = payload.subarray(12, 28);
+    const body = payload.subarray(28);
+    const decipher = createDecipheriv("aes-256-gcm", this.obsEncryptionKey, iv);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(body), decipher.final()]).toString(
+      "utf8",
+    );
   }
 }

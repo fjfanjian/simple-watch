@@ -653,6 +653,32 @@ input {
   overflow-wrap: anywhere;
   color: var(--paper);
 }
+
+.room-shell.theater-mode {
+  max-width: none;
+  width: 100%;
+  min-height: 100vh;
+}
+
+.room-shell.theater-mode .audience-panel,
+.room-shell.theater-mode .room-header .room-code,
+.room-shell.theater-mode .room-header .room-links {
+  display: none;
+}
+
+.room-shell.theater-mode .screen-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.live-director-view {
+  min-height: min(62vw, 680px);
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 1rem;
+  padding: clamp(2rem, 8vw, 7rem);
+  background: radial-gradient(circle at top left, #213751, #0b1018 65%);
+}
 .obs-preset {
   display: grid;
   gap: 0.25rem;
