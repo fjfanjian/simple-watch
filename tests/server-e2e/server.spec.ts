@@ -9,6 +9,13 @@ test("public server supports upload, room admission and two-party voice", async 
   const code = process.env.SIMPLEWATCH_ADMIN_CODE;
   expect(code).toMatch(/^\d{6}$/);
 
+  await page.route("**/admin", async (route) => {
+    const response = await route.fetch();
+    const headers = response.headers();
+    delete headers["permissions-policy"];
+    await route.fulfill({ response, headers });
+  });
+
   await page.goto("/admin");
   await page.getByLabel("6 位放映口令").fill(code!);
   const loginResponsePromise = page.waitForResponse(
@@ -155,7 +162,9 @@ test("public server supports upload, room admission and two-party voice", async 
         csrfToken: string;
       }
     ).csrfToken;
-    await expect(monitor.getByText("OBS 直播")).toBeVisible();
+    await expect(
+      monitor.getByText("OBS 直播", { exact: true }).first(),
+    ).toBeVisible();
     await expect(monitor.getByText("2 / 5")).toBeVisible();
     await expect(monitor.getByText("推流在线")).toBeVisible({
       timeout: 15_000,
@@ -254,35 +263,20 @@ async function selectVodAndWait(page: Page, label: string) {
 async function publishWhipFromBrowser(page: Page, url: string, token: string) {
   return page.evaluate(
     async ({ url, token }) => {
-      const audioStream = await navigator.mediaDevices.getUserMedia({
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
-        video: false,
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 },
+        },
       });
-      const canvas = document.createElement("canvas");
-      canvas.width = 640;
-      canvas.height = 360;
-      const context = canvas.getContext("2d");
-      if (!context) throw new Error("Canvas 2D context unavailable");
-      let frame = 0;
-      const drawFrame = () => {
-        context.fillStyle = frame % 2 === 0 ? "#0b1f33" : "#123c5a";
-        context.fillRect(0, 0, canvas.width, canvas.height);
-        context.fillStyle = "#ffffff";
-        context.font = "32px sans-serif";
-        context.fillText(`SimpleWatch WHIP ${frame++}`, 40, 190);
-      };
-      drawFrame();
-      const frameTimer = window.setInterval(drawFrame, 100);
-      const videoStream = canvas.captureStream(10);
-      const stream = new MediaStream([
-        ...audioStream.getAudioTracks(),
-        ...videoStream.getVideoTracks(),
-      ]);
-      const peer = new RTCPeerConnection();
+      const videoTrack = stream.getVideoTracks()[0];
+      if (!videoTrack) throw new Error("Fake camera produced no video track");
+      videoTrack.contentHint = "motion";
+      const peer = new RTCPeerConnection({ sdpSemantics: "unified-plan" });
       for (const track of stream.getTracks()) {
-        const transceiver = peer.addTransceiver(track, {
-          direction: "sendonly",
-        });
+        const sender = peer.addTrack(track, stream);
         if (track.kind === "video") {
           const codecs = RTCRtpSender.getCapabilities("video")?.codecs ?? [];
           const h264 = codecs.filter((codec) =>
@@ -290,6 +284,11 @@ async function publishWhipFromBrowser(page: Page, url: string, token: string) {
           );
           if (h264.length === 0)
             throw new Error("Chrome does not expose an H264 encoder");
+          const transceiver = peer
+            .getTransceivers()
+            .find((candidate) => candidate.sender === sender);
+          if (!transceiver)
+            throw new Error("Video transceiver was not created");
           transceiver.setCodecPreferences(h264);
         }
       }
@@ -314,7 +313,7 @@ async function publishWhipFromBrowser(page: Page, url: string, token: string) {
           authorization: `Bearer ${token}`,
           "content-type": "application/sdp",
         },
-        body: peer.localDescription?.sdp,
+        body: peer.localDescription?.sdp ?? "",
       });
       if (!response.ok) throw new Error(`WHIP HTTP ${response.status}`);
       const location = response.headers.get("location");
@@ -369,6 +368,12 @@ async function publishWhipFromBrowser(page: Page, url: string, token: string) {
       };
       const stats = await waitForOutboundMedia(10_000);
       const codecs: string[] = [];
+      const outbound: Array<{
+        kind: string | undefined;
+        packetsSent: number | undefined;
+        bytesSent: number | undefined;
+        codecId: string | undefined;
+      }> = [];
       stats.forEach((report: unknown) => {
         if (
           report &&
@@ -379,6 +384,31 @@ async function publishWhipFromBrowser(page: Page, url: string, token: string) {
           typeof report.mimeType === "string"
         ) {
           codecs.push(report.mimeType);
+        }
+        if (
+          report &&
+          typeof report === "object" &&
+          "type" in report &&
+          report.type === "outbound-rtp"
+        ) {
+          outbound.push({
+            kind:
+              "kind" in report && typeof report.kind === "string"
+                ? report.kind
+                : undefined,
+            packetsSent:
+              "packetsSent" in report && typeof report.packetsSent === "number"
+                ? report.packetsSent
+                : undefined,
+            bytesSent:
+              "bytesSent" in report && typeof report.bytesSent === "number"
+                ? report.bytesSent
+                : undefined,
+            codecId:
+              "codecId" in report && typeof report.codecId === "string"
+                ? report.codecId
+                : undefined,
+          });
         }
       });
       const diagnostics = {
@@ -393,13 +423,13 @@ async function publishWhipFromBrowser(page: Page, url: string, token: string) {
           currentDirection: transceiver.currentDirection,
         })),
         videoTrack: stream.getVideoTracks()[0]?.getSettings(),
+        outbound,
       };
       (
         window as typeof window & {
           __simpleWatchWhipTest?: {
             peer: RTCPeerConnection;
             stream: MediaStream;
-            frameTimer: number;
             location: string | null;
             url: string;
             token: string;
@@ -408,7 +438,6 @@ async function publishWhipFromBrowser(page: Page, url: string, token: string) {
       ).__simpleWatchWhipTest = {
         peer,
         stream,
-        frameTimer,
         location,
         url,
         token,
@@ -430,7 +459,6 @@ async function stopWhipFromBrowser(page: Page) {
       __simpleWatchWhipTest?: {
         peer: RTCPeerConnection;
         stream: MediaStream;
-        frameTimer: number;
         location: string | null;
         url: string;
         token: string;
@@ -439,7 +467,6 @@ async function stopWhipFromBrowser(page: Page) {
     const active = testWindow.__simpleWatchWhipTest;
     if (!active) return;
     active.peer.close();
-    window.clearInterval(active.frameTimer);
     for (const track of active.stream.getTracks()) track.stop();
     if (active.location) {
       await fetch(new URL(active.location, active.url), {

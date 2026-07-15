@@ -8,9 +8,11 @@ import { execFileSync } from "node:child_process";
 const outputDirectory = resolve("../../test-data/generated");
 const outputPath = resolve(outputDirectory, "media-smoke.mp4");
 const hevcOutputPath = resolve(outputDirectory, "media-smoke-hevc-hev1.mp4");
+const whipVideoPath = resolve(outputDirectory, "whip-test.y4m");
 mkdirSync(outputDirectory, { recursive: true });
 rmSync(outputPath, { force: true });
 rmSync(hevcOutputPath, { force: true });
+rmSync(whipVideoPath, { force: true });
 
 execFileSync(
   "ffmpeg",
@@ -54,6 +56,26 @@ execFileSync(
     "+faststart",
     "-y",
     outputPath,
+  ],
+  { stdio: "inherit", windowsHide: true },
+);
+
+execFileSync(
+  "ffmpeg",
+  [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=320x180:rate=30:duration=6",
+    "-pix_fmt",
+    "yuv420p",
+    "-f",
+    "yuv4mpegpipe",
+    "-y",
+    whipVideoPath,
   ],
   { stdio: "inherit", windowsHide: true },
 );
@@ -130,6 +152,7 @@ console.log(
         outputPath: hevcOutputPath,
         compatibility: hevcResult.compatibility,
       },
+      whip: { outputPath: whipVideoPath },
     },
     null,
     2,
