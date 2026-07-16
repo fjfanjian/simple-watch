@@ -357,6 +357,7 @@ describe("SimpleWatch API", () => {
               { status: 200 },
             ),
           );
+        expect(new URL(requestUrl(input)).search).toBe("");
         metricsCall += 1;
         const suffix = `path="${livePath}",state="publish"`;
         return Promise.resolve(

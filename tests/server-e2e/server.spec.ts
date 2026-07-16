@@ -245,7 +245,7 @@ test("public upload reports speed and can be cancelled", async ({ page }) => {
   ).toBeVisible();
 
   await page
-    .locator('input[type="file"][accept*="video/mp4"]')
+    .locator('input[type="file"][accept*="video/"]')
     .first()
     .setInputFiles({
       name: `cancel-${Date.now()}.mp4`,
@@ -264,7 +264,7 @@ test("public upload reports speed and can be cancelled", async ({ page }) => {
 
 async function uploadMp4(page: Page, name: string, path: string) {
   await page
-    .locator('input[type="file"][accept*="video/mp4"]')
+    .locator('input[type="file"][accept*="video/"]')
     .first()
     .setInputFiles({
       name,

@@ -290,10 +290,7 @@ export class TransportService {
     const metricsUrl = new URL(this.options.mediamtxControlUrl);
     metricsUrl.port = "9998";
     metricsUrl.pathname = "/metrics";
-    metricsUrl.search = new URLSearchParams({
-      type: "webrtc_sessions",
-      path,
-    }).toString();
+    metricsUrl.search = "";
     const response = await fetch(metricsUrl, {
       signal: AbortSignal.timeout(1500),
     });
@@ -596,7 +593,11 @@ function sumPrometheusMetric(
 ): number {
   let total = 0;
   for (const line of text.split("\n")) {
-    if (!line.startsWith(`${metric}{`) || !line.includes(`path="${path}"`))
+    if (
+      !line.startsWith(`${metric}{`) ||
+      !line.includes(`path="${path}"`) ||
+      !line.includes('state="publish"')
+    )
       continue;
     const value = Number(line.slice(line.lastIndexOf(" ") + 1));
     if (Number.isFinite(value)) total += value;
